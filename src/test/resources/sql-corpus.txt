@@ -1,0 +1,384 @@
+# sql-corpus.txt — one statement per line: dialect | SQL
+# Harvested for P3.2 compare/JMH. No secrets. # starts a comment line.
+# Sources: SqlParserCompareTest + jkit SqlGoldenCorpusTest + common-model-sql-corpus + safe synthetic samples.
+# Counts: compare-test=64, jkit-golden=131, common-model=86, safe-samples=98; total=379
+
+mysql | SELECT 1
+mysql | SELECT * FROM t
+mysql | SELECT t.* FROM t
+mysql | SELECT a AS x, b y FROM t WHERE id = ?
+mysql | SELECT COUNT(*), COUNT(DISTINCT id) FROM t
+mysql | SELECT * FROM a LEFT JOIN b ON a.id = b.aid WHERE a.age > 18
+mysql | SELECT * FROM (SELECT id FROM t) x
+mysql | SELECT * FROM t WHERE id IN (SELECT user_id FROM vip)
+mysql | SELECT * FROM t WHERE (ta_code, manager_code) IN ((?, ?), (?, ?))
+mysql | SELECT CASE WHEN a > 0 THEN 1 ELSE 0 END FROM t
+mysql | SELECT * FROM t GROUP BY a WITH ROLLUP HAVING COUNT(*) > 1
+mysql | SELECT * FROM t ORDER BY a DESC LIMIT 10 OFFSET 20
+mysql | SELECT * FROM t FOR UPDATE
+mysql | SELECT * FROM t LOCK IN SHARE MODE
+mysql | SELECT 1 UNION ALL SELECT 2
+mysql | INSERT INTO t (id, name) VALUES (1, 'a') ON DUPLICATE KEY UPDATE name = VALUES(name)
+mysql | INSERT INTO dest (id) SELECT id FROM src
+mysql | UPDATE t JOIN s ON t.id = s.id SET t.a = s.a WHERE s.flag = 1
+mysql | DELETE t FROM t JOIN s ON t.id = s.id WHERE s.flag = 1
+mysql | WITH c AS (SELECT id FROM t) SELECT * FROM c
+mysql | SELECT ROW_NUMBER() OVER (PARTITION BY a ORDER BY b) FROM t
+mysql | SELECT EXTRACT(YEAR FROM dt), TRIM(BOTH FROM name) FROM t
+mysql | SHOW CREATE TABLE abc
+mysql | SHOW COLUMNS FROM t
+mysql | CREATE TABLE IF NOT EXISTS t (id INT PRIMARY KEY, name VARCHAR(32))
+mysql | ALTER TABLE t ADD COLUMN age INT DEFAULT 0
+mysql | SELECT * FROM information_schema.CLUSTER_TABLE_SEGMENTS WHERE table_schema = 'eoai' AND table_name = 'fct_agt_savinf'
+postgres | SELECT DISTINCT ON (id) * FROM t ORDER BY id, ts DESC
+postgres | INSERT INTO t (id) VALUES (1) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+postgres | UPDATE t SET n = n + 1 WHERE id = 1 RETURNING n
+postgres | SELECT id::int FROM t
+postgres | SELECT COUNT(*) FILTER (WHERE active) FROM t
+oracle | SELECT * FROM t WHERE ROWNUM <= 10
+oracle | SELECT sysdate FROM dual
+oracle | SELECT * FROM t START WITH pid IS NULL CONNECT BY PRIOR id = pid
+sqlserver | SELECT TOP 10 * FROM t ORDER BY id
+sqlserver | SELECT * FROM [dbo].[user] WHERE [id] = 1
+mysql | SELECT id, SUM(x) OVER w FROM t WINDOW w AS (PARTITION BY a ORDER BY b)
+mysql | SELECT SUM(x) OVER w1, AVG(x) OVER w2 FROM t WINDOW w1 AS (PARTITION BY a), w2 AS (ORDER BY b)
+postgres | SELECT * FROM t, LATERAL (SELECT id FROM s WHERE s.tid = t.id) x
+postgres | SELECT * FROM t LEFT JOIN LATERAL (SELECT 1 AS n) x ON true
+sqlserver | SELECT * FROM a CROSS APPLY (SELECT TOP 1 id FROM b WHERE b.aid = a.id) x
+sqlserver | SELECT * FROM a OUTER APPLY (SELECT id FROM b WHERE b.aid = a.id) x
+mysql | SELECT SUM(x) OVER w2 FROM t WINDOW w AS (PARTITION BY a), w2 AS (w ORDER BY b)
+postgres | SELECT RANK() OVER w2 FROM t WINDOW w AS (ORDER BY a), w2 AS (w)
+postgres | SELECT * FROM UNNEST(arr) AS u(x)
+oracle | SELECT * FROM TABLE(fn(1, 2)) t
+postgres | SELECT * FROM (VALUES (1), (2)) AS v(id)
+postgres | SELECT * FROM (VALUES (1, 'a'), (2, 'b')) AS v(id, name)
+oracle | INSERT ALL INTO t1 (id) VALUES (id) INTO t2 (id) VALUES (id) SELECT id FROM src
+postgres | INSERT INTO t (id) SELECT id FROM s ON CONFLICT (id) DO NOTHING
+postgres | UPDATE t SET a = s.a FROM s WHERE t.id = s.id
+postgres | DELETE FROM t USING s WHERE t.id = s.id
+ansi | MERGE INTO t USING s ON t.id = s.id WHEN MATCHED AND t.flag = 1 THEN UPDATE SET t.a = s.a WHEN NOT MATCHED THEN INSERT (id, a) VALUES (s.id, s.a)
+sqlserver | INSERT INTO t (id) OUTPUT INSERTED.id VALUES (1)
+mysql | CREATE OR REPLACE VIEW v_user AS SELECT id, name FROM t
+mysql | CREATE PROCEDURE sp_add(IN a INT) BEGIN SELECT a; END
+mysql | CALL sp_add(1, 'x')
+mysql | ANALYZE TABLE t
+postgres | COMMENT ON TABLE t IS 'users'
+sqlserver | SELECT 1 GO SELECT 2
+mysql | /*!40101 SET NAMES utf8 */
+mysql | SELECT /*+ INDEX(t idx_id) */ id FROM t
+mysql | SELECT id FROM t /*+ INDEX(t idx_name) */ WHERE id = 1
+mysql | SELECT 1 FROM dual
+mysql | SELECT DISTINCT a, b FROM t
+mysql | SELECT a AS x, b y FROM t
+mysql | SELECT COUNT(*), COUNT(DISTINCT id), SUM(amt) FROM t
+mysql | SELECT * FROM t WHERE id BETWEEN 1 AND 10
+mysql | SELECT * FROM t WHERE name LIKE 'a%' ESCAPE '/'
+mysql | SELECT * FROM t WHERE name NOT LIKE 'a%'
+mysql | SELECT * FROM t WHERE id NOT IN (1, 2, 3)
+mysql | SELECT * FROM t WHERE id IS NULL AND name IS NOT NULL
+mysql | SELECT * FROM t WHERE a AND NOT b OR c XOR d
+mysql | SELECT * FROM t FORCE INDEX (idx_id) WHERE id = 1
+mysql | SELECT * FROM a INNER JOIN b ON a.id = b.aid
+mysql | SELECT * FROM a LEFT OUTER JOIN b ON a.id = b.aid
+mysql | SELECT * FROM a RIGHT JOIN b USING (id)
+mysql | SELECT * FROM a CROSS JOIN b
+mysql | SELECT * FROM a NATURAL JOIN b
+mysql | SELECT * FROM a STRAIGHT_JOIN b ON a.id = b.id
+mysql | SELECT * FROM a, b, c WHERE a.id = b.id
+mysql | SELECT * FROM t WHERE id IN (SELECT id FROM s)
+mysql | SELECT * FROM t WHERE EXISTS (SELECT 1 FROM s WHERE s.id = t.id)
+mysql | SELECT * FROM t WHERE (a, b) IN ((1, 2), (3, 4))
+mysql | SELECT CASE WHEN a > 0 THEN 1 WHEN a < 0 THEN -1 ELSE 0 END FROM t
+mysql | SELECT CASE a WHEN 1 THEN 'x' ELSE 'y' END FROM t
+mysql | SELECT CAST(id AS CHAR), id + 1, id DIV 2 FROM t
+mysql | SELECT * FROM t GROUP BY a, b WITH ROLLUP
+mysql | SELECT a, COUNT(*) FROM t GROUP BY a HAVING COUNT(*) > 1
+mysql | SELECT * FROM t ORDER BY a DESC, b ASC LIMIT 10 OFFSET 20
+mysql | SELECT * FROM t LIMIT 5, 10
+mysql | SELECT * FROM t FOR UPDATE OF a, b SKIP LOCKED
+mysql | SELECT * FROM t FOR UPDATE NOWAIT
+mysql | SELECT 1 UNION SELECT 2 UNION ALL SELECT 3
+mysql | INSERT INTO t VALUES (1, 'a')
+mysql | INSERT INTO t SELECT * FROM t
+mysql | INSERT INTO t (id, name) VALUES (1, 'a'), (2, 'b')
+mysql | INSERT INTO t SET id = 1, name = 'a'
+mysql | INSERT IGNORE INTO t SELECT * FROM s
+mysql | INSERT INTO t (id) VALUES (1) ON DUPLICATE KEY UPDATE id = id + 1
+mysql | REPLACE INTO t (id, name) VALUES (1, 'a')
+mysql | UPDATE t SET a = 1, b = b + 1 WHERE id = 1 ORDER BY id LIMIT 1
+mysql | UPDATE t JOIN s ON t.id = s.id SET t.a = s.a
+mysql | DELETE FROM t WHERE id = 1 LIMIT 1
+mysql | CREATE TABLE IF NOT EXISTS t (id INT PRIMARY KEY, name VARCHAR(32) NOT NULL)
+mysql | CREATE TABLE t (id INT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='x'
+mysql | CREATE TABLE t AS SELECT * FROM s
+mysql | DROP TABLE IF EXISTS t, s
+mysql | TRUNCATE TABLE t
+mysql | ALTER TABLE t ADD COLUMN c INT
+mysql | ALTER TABLE t DROP COLUMN c
+mysql | ALTER TABLE t ADD INDEX idx_a (a, b)
+mysql | ALTER TABLE t DROP INDEX idx_a
+mysql | ALTER TABLE t RENAME TO t2
+mysql | CREATE INDEX idx_name ON t (name)
+mysql | EXPLAIN SELECT * FROM t WHERE id = 1
+mysql | DESC t
+mysql | SHOW TABLES
+mysql | SHOW INDEX FROM t
+mysql | SET names utf8mb4
+mysql | SET @x = 1
+mysql | USE app_db
+mysql | SELECT * FROM t WHERE id = ? AND name = ?
+mysql | -- line comment SELECT 1 /* block */ FROM t
+mysql | SELECT `select` FROM `table` WHERE `from` = 1
+mysql | SELECT * FROM t WHERE name = 'it''s ok'
+mysql | WITH w AS (SELECT id FROM t) SELECT * FROM w
+mysql | WITH RECURSIVE r AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM r WHERE n < 5) SELECT * FROM r
+mysql | SELECT SUM(amt) OVER (ORDER BY d ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) FROM t
+postgres | SELECT * FROM t WHERE a || b = 'ab'
+postgres | SELECT * FROM t WHERE name ILIKE 'a%'
+postgres | SELECT * FROM t LIMIT 10 OFFSET 5
+postgres | SELECT * FROM t OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY
+postgres | INSERT INTO t (id, name) VALUES (1, 'a') ON CONFLICT (id) DO NOTHING
+postgres | INSERT INTO t (id, name) VALUES (1, 'a') ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+postgres | UPDATE t SET n = n + 1 WHERE id = 1 RETURNING *
+postgres | DELETE FROM t WHERE id = 1 RETURNING id
+postgres | SELECT id::int, created_at::date FROM t
+oracle | SELECT * FROM dual
+oracle | SELECT * FROM t START WITH pid IS NULL CONNECT BY pid = PRIOR id
+oracle | SELECT a FROM t MINUS SELECT a FROM s
+ansi | SELECT * FROM "User" WHERE "Id" = 1
+mysql | SELECT GROUP_CONCAT(name ORDER BY id SEPARATOR ',') FROM t
+mysql | SELECT GROUP_CONCAT(DISTINCT name SEPARATOR ';') FROM t
+postgres | SELECT STRING_AGG(name, ',' ORDER BY id) FROM t
+postgres | SELECT STRING_AGG(name, ',') WITHIN GROUP (ORDER BY id) FROM t
+mysql | SELECT IF(a > 0, 'y', 'n') FROM t
+mysql | SELECT CONVERT(name USING utf8mb4) FROM t
+sqlserver | SELECT CONVERT(varchar(10), name) FROM t
+postgres | SELECT data -> 'a', data ->> 'b' FROM t
+postgres | SELECT data #> '{a}', data #>> '{a,b}' FROM t
+mysql | SELECT * FROM t WHERE MATCH(title, body) AGAINST ('foo' IN BOOLEAN MODE)
+mysql | SELECT * FROM t WHERE MATCH(title) AGAINST ('bar')
+postgres | SELECT * FROM t WHERE a IS DISTINCT FROM b
+postgres | SELECT * FROM t WHERE a IS NOT DISTINCT FROM b
+postgres | SELECT arr[1], arr[2][3] FROM t
+postgres | SELECT * FROM t WHERE x = ANY(SELECT id FROM s)
+postgres | SELECT * FROM t WHERE x = SOME(arr)
+postgres | SELECT * FROM t WHERE x <> ALL(arr)
+postgres | SELECT INTERVAL '1 day', X'FF'
+mysql | SELECT INTERVAL 1 DAY, 0xFF, X'AB'
+oracle | INSERT FIRST WHEN id > 0 THEN INTO t (id) VALUES (id) ELSE INTO t0 (id) VALUES (id) SELECT id FROM src
+postgres | INSERT INTO t (id, name) SELECT id, name FROM s ON CONFLICT (id) DO NOTHING
+postgres | INSERT INTO t (id) SELECT id FROM s ON CONFLICT ON CONSTRAINT t_pkey DO UPDATE SET id = EXCLUDED.id
+postgres | UPDATE t SET a = s.a FROM s JOIN u ON s.uid = u.id WHERE t.id = s.id
+postgres | DELETE FROM t USING s, u WHERE t.id = s.id AND s.uid = u.id
+mysql | DELETE t USING t JOIN s ON t.id = s.id WHERE s.flag = 1
+ansi | MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET t.a = s.a WHEN NOT MATCHED BY SOURCE THEN DELETE
+sqlserver | UPDATE t SET name = 'x' OUTPUT INSERTED.name, DELETED.name WHERE id = 1
+sqlserver | DELETE FROM t OUTPUT DELETED.* WHERE id = 1
+sqlserver | MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET t.a = s.a WHEN NOT MATCHED THEN INSERT (id, a) VALUES (s.id, s.a) OUTPUT INSERTED.*, DELETED.*
+mysql | CREATE VIEW v_user AS SELECT id, name FROM t
+mysql | CREATE OR REPLACE VIEW v_user AS SELECT id, name FROM t WHERE active = 1
+mysql | CREATE FUNCTION fn_one() RETURNS INT RETURN 1
+mysql | CREATE TRIGGER trg_bi BEFORE INSERT ON t FOR EACH ROW SET NEW.id = NEW.id
+mysql | CREATE EVENT ev_daily ON SCHEDULE EVERY 1 DAY DO SELECT 1
+mysql | BEGIN SELECT 1; END
+mysql | DECLARE x INT DEFAULT 0
+mysql | CALL sp_noop()
+mysql | OPTIMIZE TABLE t, s
+mysql | REPAIR TABLE t
+mysql | CHECK TABLE t
+postgres | VACUUM ANALYZE t
+postgres | ANALYZE t
+postgres | COMMENT ON COLUMN t.id IS 'pk'
+sqlserver | SELECT TOP 3 * FROM t ORDER BY id
+mysql | SELECT /*!50000 DISTINCT */ id FROM t
+mysql | SELECT 1 || 0 AS flag
+postgres | INSERT INTO t (id, name) VALUES (1, 'a') RETURNING id, name
+postgres | UPDATE t SET name = 'x' WHERE id = 1 RETURNING id, name
+postgres | DELETE FROM t WHERE id = 1 RETURNING id, name
+oracle | SELECT * FROM t FETCH FIRST 10 ROWS ONLY
+oracle | SELECT id FROM emp ORDER BY id FETCH FIRST 5 ROWS ONLY
+sqlserver | SELECT * FROM a OUTER APPLY (SELECT id FROM b WHERE b.aid = a.id) y
+mysql | SHOW DATABASES;
+mysql | SELECT * FROM city;
+mysql | SELECT * FROM city LIMIT 5;
+mysql | INSERT INTO TABLE persons VALUES(1,'小明','北京'),(2,'小红','上海');
+mysql | SELECT * FROM persons;
+mysql | UPDATE students SET age = age + 5 WHERE age > 20;
+ansi | SELECT * FROM UP_CASE T0 LEFT JOIN "apply" T1 ON 1 = 1 LEFT JOIN `TabLe` T2 ON 1 = 1;
+mysql | SELECT * FROM TABLE1
+mysql | SELECT * FROM TABLE2
+mysql | SELECT * FROM `TABLE1`
+ansi | SELECT * FROM "TABLE2"
+mysql | SELECT * FROM `数据存储表`
+ansi | SELECT * FROM "数据存储表1"
+mysql | SELECT `数据存储表`.field1 FROM `数据存储表`
+ansi | SELECT "数据存储表1".field1 FROM "数据存储表1"
+mysql | SELECT dataTable.`数据存储表`.field1 FROM `数据存储表`
+ansi | SELECT dataTable."数据存储表1".field1 FROM "数据存储表1"
+mysql | SELECT max(dataTable.`数据存储表`.field1) FROM `数据存储表`
+ansi | SELECT max(dataTable."数据存储表1".field1) FROM "数据存储表1"
+mysql | SELECT max(dataTable.`数据存储表`.field1) FROM `数据存储表` GROUP BY dataTable.`数据存储表`.field1
+ansi | SELECT max(dataTable."数据存储表1".field1) FROM "数据存储表1" GROUP BY dataTable."数据存储表1".field1
+mysql | SELECT max(dataTable.`数据存储表`.field1) FROM `数据存储表` GROUP BY dataTable.`数据存储表`.field1 ORDER BY dataTable.`数据存储表`.field1
+ansi | SELECT max(dataTable."数据存储表1".field1) FROM "数据存储表1" GROUP BY dataTable."数据存储表1".field1 ORDER BY dataTable."数据存储表1".field1
+mysql | SELECT max(dataTable.`数据存储表`.field1) FROM `数据存储表` GROUP BY dataTable.`数据存储表`.field1 HAVING COUNT(dataTable.`数据存储表`.field1) > 1 ORDER BY dataTable.`数据存储表`.field1
+ansi | SELECT max(dataTable."数据存储表1".field1) FROM "数据存储表1" GROUP BY dataTable."数据存储表1".field1 HAVING COUNT(dataTable."数据存储表1".field1) > 1 ORDER BY dataTable."数据存储表1".field1
+mysql | select * from t_user where 1 = 1;
+mysql | select DISTINCT COST_TYPE,COST_NM FROM TMP_COSTDATA
+mysql | SELECT COUNT(*) FROM ( SELECT DISTINCT COST_TYPE, COST_NM FROM TMP_COSTDATA ) ALIAS_COUNT
+oracle | select 1 '-- a' from dual;
+oracle | select 1 '-- a' from dual
+oracle | select 1 `-- a` from dual;
+oracle | select 1 `-- a` from dual
+oracle | select 1 '# a' from dual;
+oracle | select 1 '# a' from dual
+oracle | select 1 `# a` from dual;
+oracle | select 1 `# a` from dual
+mysql | SELECT ID_ "--11asd" FROM WK_DEPLOYMENT
+mysql | SELECT DISTINCT CLIENT_ID,CODE_ FROM t_client
+mysql | select distinct * from(SELECT * FROM T_DSJRWGS_BZBGS_18_7 U WHERE DAY_ID ='202311--')t
+mysql | select distinct A1,B2,C3,D4 from t_client
+mysql | SELECT * FROM TEST;
+mysql | SELECT Persons.LastName, Persons.FirstName, Orders.OrderNo
+mysql | SELECT LastName,FirstName
+mysql | SHOW DATABASES LIKE '%test';
+mysql | SHOW CREATE DATABASE test;
+mysql | SHOW TABLES FROM db_name;
+mysql | SHOW CHARACTER SET;
+mysql | SHOW COLUMNS FROM blog.info;
+mysql | DESC table_name;
+mysql | INSERT INTO table2 SELECT * FROM table1;
+mysql | INSERT INTO Persons VALUES ('Gates', 'Bill', 'Xuanwumen 10', 'Beijing')
+mysql | UPDATE Person SET FirstName = 'Fred' WHERE LastName = 'Wilson'
+mysql | DELETE FROM Person WHERE LastName = 'Wilson'
+mysql | ALTER TABLE Persons
+mysql | DROP TABLE Persons
+mysql | SELECT * FROM TEST
+mysql | SHOW DATABASES
+mysql | SHOW TABLES FROM db_name
+mysql | DESC table_name
+mysql | DESCRIBE table_name
+mysql | EXPLAIN SELECT * FROM table_name
+mysql | INSERT INTO table2 SELECT * FROM table1
+mysql | SHOW CREATE TABLE table_name
+mysql | select id,CONCAT(SUBSTR(name,1,1),'*',SUBSTR(name,-1)) name, phone, id_card, money1, money2, email, address from aaaaa
+mysql | select `1019使用`.`id` as `id`, `name`, `1019使用`.`city_code` as `city_code`, `1019使用`
+mysql | select * from test_table
+mysql | select * from test_table limit 10000
+mysql | SELECT a.id, a.name FROM (SELECT id, name, age FROM users ORDER BY age DESC, create_time ASC) a WHERE a.age > 20
+mysql | SELECT t1.id FROM main_table t1 JOIN (SELECT user_id FROM orders WHERE amount > 100 ORDER BY order_date DESC) t2 ON t1.id = t2.user_id
+mysql | SELECT * FROM (SELECT u.id, u.name, p.product_name FROM (SELECT id, name FROM users ORDER BY registration_date DESC) u JOIN products p ON u.id = p.user_id) final_result WHERE final_result.id < 1000
+mysql | SELECT id, name, age, create_time FROM users
+mysql | SELECT user_id, order_date FROM orders WHERE amount > 100
+mysql | SELECT id, name, registration_date FROM users
+mysql | select id,name from aaa order by id
+mysql | SELECT * FROM (SELECT id, name FROM users WHERE status = 'A' ORDER BY created_at DESC) u WHERE u.id < 100
+mysql | SELECT id, name, created_at FROM users WHERE status = 'A'
+mysql | SELECT t.* FROM (SELECT id, score FROM exam_results ORDER BY score DESC) t LEFT JOIN classes c ON c.id = t.id
+mysql | SELECT * FROM (SELECT id FROM users ORDER BY id DESC LIMIT 10) x WHERE x.id > 5
+mysql | SELECT id FROM users ORDER BY id DESC LIMIT 10
+mysql | SELECT * FROM (SELECT * FROM (SELECT name, salary FROM employees ORDER BY salary DESC LIMIT 50) top_50 ORDER BY name ASC LIMIT 10) final_10
+mysql | SELECT `A`.`rn`,`A`.`CUST_NO`,`A`.`A0001`,`A`.`A0002`,`A`.`A0003`,`A`.`A0004`,`A`
+mysql | select distinct 房地产税收城市信息.年 from 房地产税收城市信息 where 1 = 1 order by 房地产税收城市信息.省份 desc
+mysql | select 房地产税收城市信息.年 from 房地产税收城市信息 where 1 = 1 order by 房地产税收城市信息.省份 desc
+mysql | SELECT T1.NAME AS 名称,T2.age AS 年龄 FROM ods.test1 T1 LEFT JOIN ods.test2 T2 ON T1.id=T2.id AND T1.NAME=T2.NAME GROUP BY T1.NAME,T2.age ORDER BY T1.NAME
+mysql | select * from student
+mysql | select * from student where a = 1
+mysql | SELECT id, name FROM user_info WHERE status = 1 AND deleted = 0 ORDER BY id DESC LIMIT 100
+mysql | SELECT u.id, r.role_name FROM sys_user u INNER JOIN sys_user_role ur ON u.id = ur.user_id INNER JOIN sys_role r ON r.id = ur.role_id
+mysql | SELECT DATE_FORMAT(create_time, '%Y-%m-%d') d, COUNT(*) c FROM order_main GROUP BY DATE_FORMAT(create_time, '%Y-%m-%d')
+mysql | SELECT * FROM product WHERE price BETWEEN 10.5 AND 99.9 AND category_id IN (1,2,3,4,5)
+mysql | INSERT INTO audit_log (user_id, action, detail, created_at) VALUES (?, ?, ?, NOW())
+mysql | UPDATE inventory SET qty = qty - ? WHERE sku = ? AND qty >= ?
+mysql | DELETE FROM session_token WHERE expire_at < NOW()
+mysql | SELECT a.*, b.score FROM student a LEFT JOIN exam_score b ON a.id = b.student_id WHERE b.score IS NULL OR b.score < 60
+mysql | WITH RECURSIVE cte AS (SELECT id, parent_id, 1 AS lvl FROM org WHERE parent_id IS NULL UNION ALL SELECT o.id, o.parent_id, c.lvl+1 FROM org o JOIN cte c ON o.parent_id = c.id) SELECT * FROM cte
+mysql | SELECT id, name, ROW_NUMBER() OVER (PARTITION BY dept_id ORDER BY salary DESC) rn FROM employee
+mysql | SELECT dept_id, AVG(salary) OVER (PARTITION BY dept_id) avg_sal, salary FROM employee
+mysql | SELECT * FROM t WHERE JSON_EXTRACT(payload, '$.type') = 'order'
+mysql | REPLACE INTO cache_kv (k, v, updated_at) VALUES ('k1', 'v1', NOW())
+mysql | SELECT /*+ MAX_EXECUTION_TIME(1000) */ id FROM big_table WHERE flag = 1
+mysql | CREATE INDEX idx_user_name ON sys_user (name)
+mysql | DROP TABLE IF EXISTS tmp_batch_result
+mysql | TRUNCATE TABLE tmp_import
+mysql | SELECT 1 FROM DUAL WHERE EXISTS (SELECT 1 FROM t WHERE id = 1)
+mysql | SELECT IFNULL(a,0), COALESCE(b,c,d), NULLIF(e,f) FROM t
+postgres | SELECT id, name FROM users WHERE email ILIKE '%@example.com' LIMIT 50
+postgres | SELECT jsonb_agg(t) FROM (SELECT id, name FROM users WHERE active) t
+postgres | SELECT * FROM events WHERE created_at >= NOW() - INTERVAL '7 days'
+postgres | UPDATE accounts SET balance = balance + 100 WHERE id = 1 RETURNING balance
+postgres | SELECT generate_series(1, 10) AS n
+postgres | SELECT id FROM t WHERE tags @> ARRAY['vip']
+postgres | SELECT * FROM t TABLESAMPLE SYSTEM (10)
+postgres | EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 42
+oracle | SELECT empno, ename, sal FROM emp WHERE deptno = 10 ORDER BY sal DESC FETCH FIRST 10 ROWS ONLY
+oracle | SELECT NVL(comm, 0), NVL2(comm, sal+comm, sal) FROM emp
+oracle | SELECT * FROM emp WHERE hiredate > TO_DATE('2020-01-01', 'YYYY-MM-DD')
+oracle | MERGE INTO tgt t USING src s ON (t.id = s.id) WHEN MATCHED THEN UPDATE SET t.v = s.v WHEN NOT MATCHED THEN INSERT (id, v) VALUES (s.id, s.v)
+sqlserver | SELECT TOP (100) WITH TIES id, name FROM dbo.Customer ORDER BY created_at DESC
+sqlserver | SELECT * FROM dbo.Orders o WHERE EXISTS (SELECT 1 FROM dbo.OrderItem i WHERE i.order_id = o.id)
+sqlserver | UPDATE dbo.Product SET Price = Price * 1.1 OUTPUT inserted.Id, inserted.Price WHERE CategoryId = 3
+sqlserver | SELECT FORMAT(GetDate(), 'yyyy-MM-dd') AS d
+ansi | SELECT COUNT(*) FILTER (WHERE status = 'A') FROM orders
+ansi | SELECT * FROM t WHERE id = ANY (SELECT id FROM s)
+mysql | SELECT GROUP_CONCAT(name ORDER BY name SEPARATOR ',') FROM city GROUP BY province
+mysql | SELECT * FROM t USE INDEX (idx_a) WHERE a = 1 AND b = 2
+mysql | ALTER TABLE t MODIFY COLUMN name VARCHAR(64) NOT NULL
+mysql | CREATE TABLE t2 LIKE t1
+mysql | INSERT INTO t SELECT * FROM t2 WHERE id > 100 ON DUPLICATE KEY UPDATE name = t2.name
+mysql | SELECT SQL_CALC_FOUND_ROWS * FROM t LIMIT 20
+mysql | SHOW TABLE STATUS LIKE 'user%'
+mysql | SELECT BENCHMARK(1, MD5('x'))
+mysql | SELECT * FROM t WHERE MATCH(title, content) AGAINST ('keyword' IN BOOLEAN MODE)
+postgres | SELECT * FROM t FOR UPDATE SKIP LOCKED
+postgres | COPY t FROM STDIN WITH (FORMAT csv)
+oracle | SELECT * FROM emp SAMPLE(5)
+sqlserver | SELECT * FROM OPENJSON(@json) WITH (id int '$.id', name nvarchar(50) '$.name')
+mysql | SELECT id FROM t WHERE a = 1 UNION SELECT id FROM t WHERE b = 2 UNION ALL SELECT id FROM t WHERE c = 3
+mysql | SELECT (SELECT MAX(id) FROM t) AS max_id, (SELECT MIN(id) FROM t) AS min_id
+mysql | SELECT * FROM t WHERE (a, b) = (1, 2)
+mysql | SELECT SUM(CASE WHEN status='OK' THEN 1 ELSE 0 END) ok_cnt FROM job
+mysql | SELECT * FROM t1 STRAIGHT_JOIN t2 ON t1.id = t2.tid
+mysql | SELECT YEAR(dt), MONTH(dt), DAY(dt), HOUR(dt) FROM t
+mysql | SELECT SUBSTRING(name, 1, 3), CONCAT(a, '-', b), LENGTH(c) FROM t
+mysql | SELECT * FROM t WHERE id > LAST_INSERT_ID()
+postgres | SELECT * FROM t WHERE name ~ '^[A-Z].*'
+postgres | WITH w AS (SELECT id FROM t WHERE active) SELECT COUNT(*) FROM w
+oracle | SELECT * FROM emp WHERE ROWNUM <= 5 AND deptno IN (10, 20)
+sqlserver | ;WITH cte AS (SELECT id, parent_id FROM dbo.Org) SELECT * FROM cte
+mysql | SET @x = 1; SELECT @x
+mysql | SELECT * FROM t PARTITION (p0, p1) WHERE id > 0
+mysql | HANDLER t OPEN; HANDLER t READ FIRST; HANDLER t CLOSE
+mysql | SELECT * FROM t WHERE a <=> NULL
+mysql | SELECT BINARY 'abc' = 'ABC'
+mysql | SELECT * FROM t WHERE id IN (1) ORDER BY FIELD(id, 3,2,1)
+ansi | SELECT * FROM t WHERE CURRENT_DATE > DATE '2020-01-01'
+ansi | VALUES (1, 'a'), (2, 'b')
+mysql | SELECT id, DENSE_RANK() OVER (ORDER BY score DESC) FROM contestant
+mysql | SELECT id, LAG(score, 1, 0) OVER (ORDER BY id), LEAD(score) OVER (ORDER BY id) FROM contestant
+mysql | SELECT id, FIRST_VALUE(score) OVER (PARTITION BY dept ORDER BY score ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM contestant
+mysql | SELECT * FROM t WHERE a = 1 AND b = 2 OR c = 3 AND NOT d
+mysql | SELECT * FROM (SELECT * FROM t LIMIT 10) x JOIN y ON x.id = y.xid
+postgres | SELECT * FROM t NATURAL LEFT JOIN s
+oracle | SELECT e.ename, d.dname FROM emp e, dept d WHERE e.deptno = d.deptno(+)
+sqlserver | SELECT * FROM a INNER JOIN b ON a.id = b.id LEFT JOIN c ON b.id = c.bid
+mysql | CALL sp_report(2024, 1)
+mysql | PREPARE stmt FROM 'SELECT * FROM t WHERE id = ?'; EXECUTE stmt USING @id; DEALLOCATE PREPARE stmt
+mysql | SELECT * FROM information_schema.tables WHERE table_schema = DATABASE()
+mysql | SELECT COLUMN_NAME FROM information_schema.columns WHERE table_name = 'user'
+mysql | SELECT * FROM t FORCE INDEX FOR JOIN (idx_a) WHERE a = 1
+mysql | SELECT HIGH_PRIORITY * FROM t WHERE id = 1
+mysql | INSERT DELAYED INTO log_t (msg) VALUES ('x')
+mysql | SELECT * FROM t WHERE name COLLATE utf8mb4_bin = 'Abc'
+postgres | SELECT * FROM t WHERE id IS DISTINCT FROM 1
+postgres | SELECT CAST('2020-01-01' AS date) + 7
+oracle | SELECT empno FROM emp START WITH mgr IS NULL CONNECT BY PRIOR empno = mgr
+sqlserver | SELECT * FROM dbo.fn_split('a,b,c', ',')
+mysql | SELECT * FROM t WHERE id = (SELECT id FROM s ORDER BY id LIMIT 1)
+mysql | UPDATE t SET a = (SELECT MAX(b) FROM s WHERE s.tid = t.id)
+mysql | DELETE FROM t WHERE id NOT IN (SELECT id FROM keep_ids)
+mysql | SELECT 0xAF, b'1010', X'FF' FROM dual
+mysql | SELECT INTERVAL 1 DAY + NOW()
+mysql | SELECT * FROM t WHERE create_time >= CURDATE() - INTERVAL 30 DAY
+postgres | SELECT * FROM t WHERE tsrange(start_at, end_at) @> NOW()
+ansi | SELECT * FROM t OFFSET 10 ROWS FETCH NEXT 20 ROWS ONLY

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CheckStyle-IDEA" serialisationVersion="2">
+    <checkstyleVersion>10.17.0</checkstyleVersion>
+    <scanScope>JavaOnly</scanScope>
+    <option name="activeLocationIds">
+      <option value="f1b6beef-c569-4f08-b38d-5c30455b3e80" />
+    </option>
+    <option name="locations">
+      <list>
+        <ConfigurationLocation id="bundled-sun-checks" type="BUNDLED" scope="All" description="Sun Checks">(bundled)</ConfigurationLocation>
+        <ConfigurationLocation id="bundled-google-checks" type="BUNDLED" scope="All" description="Google Checks">(bundled)</ConfigurationLocation>
+        <ConfigurationLocation id="1a3fdae2-0b17-4fc5-b675-785b3d0a9e34" type="LOCAL_FILE" scope="All" description="CDB">$USER_HOME$/文档/icell/国开/CDB_checks.xml</ConfigurationLocation>
+        <ConfigurationLocation id="f1b6beef-c569-4f08-b38d-5c30455b3e80" type="LOCAL_FILE" scope="All" description="check-style">$USER_HOME$/文档/config/checkstyle/check-style.xml</ConfigurationLocation>
+      </list>
+    </option>
+  </component>
+</project>
