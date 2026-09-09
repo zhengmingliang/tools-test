@@ -15,7 +15,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.TreeSet;
 
 import static org.junit.Assert.assertTrue;
 
@@ -242,6 +246,126 @@ public class SqlParserCompareTest {
             }
         }
         return rows;
+    }
+
+    /**
+     * Corpus-level table-name set compare (ignore catalog/schema prefix + case).
+     * Reports only-jkit / only-druid. Soft assertions: competitor gaps never fail CI;
+     * only require that jkit extracted something on a sample of successful parses.
+     */
+    @Test
+    public void corpusFileTableSetDiff() throws Exception {
+        List<Object[]> rows = loadCorpusFile();
+        assertTrue("sql-corpus.txt should have entries", !rows.isEmpty());
+
+        Set<String> onlyJkit = new TreeSet<String>();
+        Set<String> onlyDruid = new TreeSet<String>();
+        int compared = 0;
+        int jkitEmpty = 0;
+
+        for (Object[] row : rows) {
+            String dialect = (String) row[0];
+            String sql = (String) row[1];
+            Set<String> jk = normalizeTableSet(jkitTables(sql, dialect));
+            Set<String> dr = normalizeTableSet(druidTables(sql, toDbType(dialect)));
+            if (jk.isEmpty() && dr.isEmpty()) {
+                continue;
+            }
+            compared++;
+            if (jk.isEmpty()) {
+                jkitEmpty++;
+            }
+            for (String t : jk) {
+                if (!dr.contains(t)) {
+                    onlyJkit.add(dialect + " | " + t + " | " + trim(sql, 60));
+                }
+            }
+            for (String t : dr) {
+                if (!jk.contains(t)) {
+                    onlyDruid.add(dialect + " | " + t + " | " + trim(sql, 60));
+                }
+            }
+        }
+
+        System.out.printf("table-set diff: compared %d rows; only-jkit %d; only-druid %d; jkitEmpty %d%n",
+                compared, onlyJkit.size(), onlyDruid.size(), jkitEmpty);
+        if (!onlyJkit.isEmpty()) {
+            System.out.println("only-jkit (sample up to 20):");
+            int n = 0;
+            for (String s : onlyJkit) {
+                System.out.println("  + " + s);
+                if (++n >= 20) {
+                    break;
+                }
+            }
+        }
+        if (!onlyDruid.isEmpty()) {
+            System.out.println("only-druid (sample up to 20):");
+            int n = 0;
+            for (String s : onlyDruid) {
+                System.out.println("  + " + s);
+                if (++n >= 20) {
+                    break;
+                }
+            }
+        }
+
+        Path out = Paths.get("target", "sql-table-set-diff.txt");
+        Files.createDirectories(out.getParent());
+        try (BufferedWriter w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) {
+            w.write("# only-jkit / only-druid table names from sql-corpus.txt\n");
+            w.write("# compared=" + compared + " only-jkit=" + onlyJkit.size()
+                    + " only-druid=" + onlyDruid.size() + "\n");
+            w.write("## only-jkit\n");
+            for (String s : onlyJkit) {
+                w.write(s);
+                w.write('\n');
+            }
+            w.write("## only-druid\n");
+            for (String s : onlyDruid) {
+                w.write(s);
+                w.write('\n');
+            }
+        }
+
+        // Soft: do not fail on competitor gaps; only sanity-check we compared something.
+        assertTrue("should compare some rows with tables: " + compared, compared > 0);
+        // Soft: jkit should not be empty on almost all compared rows
+        assertTrue("jkit table extract empty too often: " + jkitEmpty + "/" + compared,
+                jkitEmpty * 2 < compared);
+    }
+
+    private static List<String> jkitTables(String sql, String dialect) {
+        try {
+            return com.alianga.jkit.sql.SQL.tables(
+                    com.alianga.jkit.sql.SQL.parse(sql, com.alianga.jkit.sql.SqlDialect.fromName(dialect)));
+        } catch (Throwable e) {
+            return new ArrayList<String>();
+        }
+    }
+
+    /** Lowercase simple name: strip catalog/schema prefix and []/`/" quotes. */
+    private static Set<String> normalizeTableSet(List<String> tables) {
+        Set<String> out = new LinkedHashSet<String>();
+        if (tables == null) {
+            return out;
+        }
+        for (String raw : tables) {
+            if (raw == null || raw.isEmpty()) {
+                continue;
+            }
+            String s = raw.trim();
+            s = s.replace("[", "").replace("]", "").replace("`", "").replace("\"", "");
+            int dot = s.lastIndexOf('.');
+            if (dot >= 0 && dot < s.length() - 1) {
+                s = s.substring(dot + 1);
+            }
+            s = s.toLowerCase(Locale.ROOT);
+            if (!s.isEmpty() && !"*".equals(s)) {
+                out.add(s);
+            }
+        }
+        return out;
     }
 
     @Test
