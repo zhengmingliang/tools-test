@@ -1,6 +1,7 @@
 # External SQL corpora（jkit-sql 批量验收）
 
-本目录存放从外部仓库复制的 SQL 语料，供 `ExternalSqlCorpusTest` 在 CI / 本地跑解析成功率，留下可检查的失败报告。
+本目录存放从外部仓库复制的 SQL 语料，供 `ExternalSqlCorpusTest` / `ExternalSqlCorpusCompareTest`
+在 CI / 本地跑解析成功率与竞品对比，留下可检查的失败 / 分歧报告。
 
 ## 来源
 
@@ -22,16 +23,32 @@
 在 **tools-test** 仓库根目录（独立 Maven 工程）：
 
 ```bash
+# jkit-only 验收（阈值 soft-assert）
 mvn -Dtest=ExternalSqlCorpusTest test
+
+# jkit vs Druid vs JSqlParser：正确率 + 速度（强调 complex100）
+mvn -Dtest=ExternalSqlCorpusCompareTest test
 ```
 
-需本地已安装匹配的 `jkit-sql`（pom 中版本，当前 `2.0.1`）。失败明细：
+需本地已安装匹配的 `jkit-sql`（pom 中版本，当前 `2.0.1`）。
 
-`target/sql-corpus-reports/<corpus>-fails.tsv`
+### 报告输出（`target/sql-corpus-reports/`）
 
-## 阈值
+| 文件 | 说明 |
+|------|------|
+| `<corpus>-fails.tsv` | `ExternalSqlCorpusTest` jkit 失败明细 |
+| `compare-<corpus>.tsv` | 三解析器分歧行（jkit/druid/jsql OK\|FAIL） |
+| `compare-summary.md` | 各语料正确率汇总表 |
+| `compare-speed.txt` | 各语料总耗时与 ns/stmt |
+
+`compareComplex100` 会向 stdout 打印详细正确率 + 速度表；bird / spider_train_spider
+体量大，正确率全量跑，速度为 warmup 后 1 次全量计时。
+
+## 阈值（jkit soft-assert）
 
 - bird：≥ 99.9%（当前 100%）
 - spider_ddl / spider_dev / spider_train*：100%
-- spider_test：≥ 99.5%，或失败均命中 `;,` allowlist
+- spider_test：≥ 99.5%，或失败均命中 `;,` allowlist（`ExternalSqlCorpusTest`）
 - complex100：≥ 95%（当前 100%）
+
+竞品（Druid / JSqlParser）失败只进报告，不硬失败构建。

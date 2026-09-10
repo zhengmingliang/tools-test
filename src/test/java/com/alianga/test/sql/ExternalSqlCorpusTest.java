@@ -150,7 +150,7 @@ public class ExternalSqlCorpusTest {
         return r;
     }
 
-    private static String tryParse(String sql, SqlDialect prefer) {
+    static String tryParse(String sql, SqlDialect prefer) {
         if (prefer != null) {
             try {
                 SQL.parse(sql, prefer);
@@ -176,13 +176,13 @@ public class ExternalSqlCorpusTest {
         return last == null ? "parse failed" : last;
     }
 
-    private static List<String> loadBirdJsonArray(String resource) throws Exception {
+    static List<String> loadBirdJsonArray(String resource) throws Exception {
         byte[] raw = readResourceBytes(resource);
         String text = new String(raw, Charset.forName("ISO-8859-1"));
         return parseJsonStringArray(text);
     }
 
-    private static List<String> loadJsonlField(String resource, String field) throws Exception {
+    static List<String> loadJsonlField(String resource, String field) throws Exception {
         List<String> out = new ArrayList<String>();
         InputStream in = open(resource);
         BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
@@ -198,7 +198,7 @@ public class ExternalSqlCorpusTest {
         return out;
     }
 
-    private static List<Item> loadComplex100Markdown(String resource) throws Exception {
+    static List<Item> loadComplex100Markdown(String resource) throws Exception {
         List<Item> out = new ArrayList<Item>();
         InputStream in = ExternalSqlCorpusTest.class.getClassLoader().getResourceAsStream(resource);
         if (in == null) {
@@ -248,7 +248,7 @@ public class ExternalSqlCorpusTest {
         return out;
     }
 
-    private static List<Item> loadComplex100Jsonl(String resource) throws Exception {
+    static List<Item> loadComplex100Jsonl(String resource) throws Exception {
         List<Item> out = new ArrayList<Item>();
         InputStream in = open(resource);
         BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
@@ -283,7 +283,7 @@ public class ExternalSqlCorpusTest {
         return "MYSQL";
     }
 
-    private static boolean looksLikeSql(String sql) {
+    static boolean looksLikeSql(String sql) {
         if (sql == null) {
             return false;
         }
@@ -473,7 +473,7 @@ public class ExternalSqlCorpusTest {
         String sql;
     }
 
-    private static final class Item {
+    static final class Item {
         int idx;
         String section;
         String title;

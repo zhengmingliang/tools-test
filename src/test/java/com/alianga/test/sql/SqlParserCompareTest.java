@@ -418,7 +418,7 @@ public class SqlParserCompareTest {
         return System.nanoTime() - t;
     }
 
-    private static boolean parseJkit(String sql, String dialect) {
+    static boolean parseJkit(String sql, String dialect) {
         try {
             com.alianga.jkit.sql.SQL.parse(sql, com.alianga.jkit.sql.SqlDialect.fromName(dialect));
             return true;
@@ -427,7 +427,7 @@ public class SqlParserCompareTest {
         }
     }
 
-    private static boolean parseDruid(String sql, String dialect) {
+    static boolean parseDruid(String sql, String dialect) {
         try {
             List<?> stmts = SQLUtils.parseStatements(sql, toDbType(dialect));
             return stmts != null && !stmts.isEmpty();
@@ -436,7 +436,7 @@ public class SqlParserCompareTest {
         }
     }
 
-    private static boolean parseJsql(String sql) {
+    static boolean parseJsql(String sql) {
         try {
             return CCJSqlParserUtil.parse(sql) != null;
         } catch (Throwable e) {
@@ -459,7 +459,7 @@ public class SqlParserCompareTest {
         return tables;
     }
 
-    private static DbType toDbType(String dialect) {
+    static DbType toDbType(String dialect) {
         if ("postgres".equals(dialect)) {
             return DbType.postgresql;
         }
