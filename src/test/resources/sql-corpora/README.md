@@ -52,3 +52,19 @@ mvn -Dtest=ExternalSqlCorpusCompareTest test
 - complex100：≥ 95%（当前 100%）
 
 竞品（Druid / JSqlParser）失败只进报告，不硬失败构建。
+
+## 竞品官方测试集（`competitor-suites/`，2026-09-10 收割）
+
+| 文件 | 来源 | 说明 |
+|------|------|------|
+| `competitor-suites/druid-bvt-inline.jsonl` | github/alibaba/druid `core/src/test/java/.../bvt/sql`（2465 个 Java 测试文件） | 提取字符串字面量中的 SQL（合并 `+` 拼接、text block），去重 6483 条 |
+| `competitor-suites/jsqlparser-inline.jsonl` | github/JSQLParser/JSqlParser `src/test/java` | 同上，去重 3078 条 |
+| `competitor-suites/jsqlparser-files.jsonl` | 同上 `src/test/resources` | .sql 整文件脚本；.txt 按格式解析（RUBiS `#begin/#end`、其余按空行分段、大文件整段），460 条 |
+
+收割脚本：`/tmp/sql-suites/harvest.py`（sparse clone 于 `/tmp/sql-suites/`，可重跑）。
+测试：`mvn -Dtest=CompetitorSuiteCorpusTest test`（三方各用方言回退链，单语句 2s 超时按 FAIL 记；
+报告在 `target/sql-corpus-reports/competitor-*`）。
+
+近期结果（2026-09-10）：druid-bvt-inline jkit 85.3% / druid 92.3% / jsql 68.1%；
+jsqlparser-inline jkit 73.1% / druid 71.1% / jsql 70.1%；jsqlparser-files jkit 66.7% / druid 81.5% / jsql 74.8%。
+jkit 全程 0 超时；druid 在自家语料仍有 2 条 PG ANALYZE 死循环。
