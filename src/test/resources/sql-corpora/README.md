@@ -65,8 +65,8 @@ mvn -Dtest=ExternalSqlCorpusCompareTest test
 测试：`mvn -Dtest=CompetitorSuiteCorpusTest test`（三方各用方言回退链，单语句 2s 超时按 FAIL 记；
 报告在 `target/sql-corpus-reports/competitor-*`）。
 
-近期结果（2026-09-11，四轮提升后）：druid-bvt-inline jkit **92.4%** / druid 92.3% / jsql 68.1%（已超 Druid）；
-jsqlparser-inline jkit 79.6% / druid 71.1% / jsql 70.1%（jkit 第一；目标 ≥90%）；jsqlparser-files jkit 75.4% / druid 81.5% / jsql 74.8%（目标 ≥90%）。
+近期结果（2026-09-11，R12）：druid-bvt-inline jkit **95.6%** / druid 92.3% / jsql 68.1%（已超 Druid）；
+jsqlparser-inline jkit **91.5%** / druid 71.1% / jsql 70.1%（已超 90%）；jsqlparser-files jkit **90.0%** / druid 81.5% / jsql 74.8%（已达目标；jkitGaps=4）。
 上一轮（三轮后）：90.1% / 78.3% / 74.3%（jkitGaps 956 → 761）。基线（2026-09-10）：85.3% / 73.1% / 66.7%（jkitGaps 1398）。
 注：jkit 解析在方言链失败后会用 SqlPlaceholders（@x@/%s/<sheet>/#{}/${}）兜底模板 SQL。
 jkit 全程 0 超时；druid 在自家语料仍有 2 条 PG ANALYZE 死循环。
