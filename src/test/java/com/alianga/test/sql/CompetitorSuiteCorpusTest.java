@@ -3,6 +3,8 @@ package com.alianga.test.sql;
 import com.alianga.jkit.json.JSON;
 import com.alianga.jkit.sql.SQL;
 import com.alianga.jkit.sql.SqlDialect;
+import com.alianga.jkit.sql.SqlParseOptions;
+import com.alianga.jkit.sql.SqlPlaceholders;
 import com.alianga.jkit.sql.ast.SqlStatement;
 import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.SQLUtils;
@@ -157,8 +159,28 @@ public class CompetitorSuiteCorpusTest {
                 return hit;
             }
         }
+        // 模板占位兜底：含 #{}/${}/@%/printf/尖括号标记时用 jkit 的 SqlPlaceholders 能力再试一次
+        if (sql.contains("#{") || sql.contains("${") || sql.contains("@") || sql.contains("<")) {
+            try {
+                SqlDialect hit = withTimeout(() -> {
+                    List<SqlStatement> l = SQL.parseAll(sql, SqlDialect.MYSQL, PLACEHOLDER_OPTIONS);
+                    return l.isEmpty() ? null : SqlDialect.MYSQL;
+                }, null);
+                if (hit != null) {
+                    placeholderHits++;
+                    return hit;
+                }
+            } catch (IllegalStateException e) {
+                // fall through
+            }
+        }
         return null;
     }
+
+    /** 模板占位配置：common-model 预设（@x@/%s/<sheet>/<-sheet->）+ MyBatis #{}/${}。 */
+    private static final SqlParseOptions PLACEHOLDER_OPTIONS = SqlParseOptions.defaults()
+            .placeholders(SqlPlaceholders.create().commonModelTemplates().add("#{*}").add("${*}"));
+    private static int placeholderHits;
 
     private static boolean druidOk(String sql) {
         for (DbType t : DRUID_TYPES) {
