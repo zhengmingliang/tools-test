@@ -16,6 +16,7 @@
     <maven.compiler.source>8</maven.compiler.source>
     <maven.compiler.target>8</maven.compiler.target>
     <jmh.version>1.37</jmh.version>
+    <oracle.jdbc.jar>/opt/workspace/zml/svn/fyj/REPORT_JG/web/WEB-INF/lib/ojdbc6-11.2.0.3.jar</oracle.jdbc.jar>
   </properties>
 
   <dependencies>
@@ -72,8 +73,27 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <version>42.7.4</version>
+      <version>42.4.1</version>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <version>8.2.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <version>2.0.206</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.oracle</groupId>
+      <artifactId>ojdbc6</artifactId>
+      <version>11.2.0.3</version>
+      <scope>system</scope>
+      <systemPath>/opt/workspace/zml/svn/fyj/REPORT_JG/web/WEB-INF/lib/ojdbc6-11.2.0.3.jar</systemPath>
     </dependency>
     <dependency>
       <groupId>org.openjdk.jmh</groupId>
