@@ -93,7 +93,7 @@
       <artifactId>ojdbc6</artifactId>
       <version>11.2.0.3</version>
       <scope>system</scope>
-      <systemPath>/opt/workspace/zml/svn/fyj/REPORT_JG/web/WEB-INF/lib/ojdbc6-11.2.0.3.jar</systemPath>
+      <systemPath>${oracle.jdbc.jar}</systemPath>
     </dependency>
     <dependency>
       <groupId>org.openjdk.jmh</groupId>
