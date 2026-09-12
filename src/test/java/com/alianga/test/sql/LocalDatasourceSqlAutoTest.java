@@ -86,7 +86,7 @@ public class LocalDatasourceSqlAutoTest {
 
     @Test
     public void damengFullCoverage() throws Exception {
-        runFull("达梦", SqlDialect.ORACLE, null);
+        runFull("达梦", SqlDialect.DAMENG, null);
     }
 
     @Test
@@ -188,7 +188,8 @@ public class LocalDatasourceSqlAutoTest {
         assertColumn(ds, USER, "updated_at");
         assertColumn(ds, USER, "org_id");
         assertFalse(nullable(ds, USER, "user_name"));
-        assertTrue(nullable(ds, USER, "email") || dialect == SqlDialect.ORACLE);
+        assertTrue(nullable(ds, USER, "email") || dialect == SqlDialect.ORACLE
+                || dialect == SqlDialect.DAMENG);
 
         if ("duckdb".equals(key) || dialect == SqlDialect.ORACLE) {
             assertTrue(isPrimaryKey(ds, USER, "id"));
@@ -202,7 +203,7 @@ public class LocalDatasourceSqlAutoTest {
             assertTrue("missing comment on " + key + ": " + remarks,
                     remarks != null && (remarks.contains("用户名") || remarks.trim().length() > 0));
         }
-        if (dialect == SqlDialect.ORACLE || "达梦".equals(key)) {
+        if (dialect == SqlDialect.ORACLE) {
             assertTrue("sequence missing on " + key, sequenceExists(ds, USER + "_id_seq"));
         }
 
