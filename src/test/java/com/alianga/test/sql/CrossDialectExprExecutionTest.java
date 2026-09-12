@@ -310,6 +310,52 @@ public class CrossDialectExprExecutionTest {
         }
     }
 
+    /**
+     * MySQL 的 {@code COALESCE(a, b, c)}（3 参数）转 SQL Server 目标时，SQL Server 的
+     * {@code ISNULL} 仅支持 2 参数——jkit 应保留 ANSI {@code COALESCE} 才能跑。
+     * 丢真 SQL Server 执行验证 3 参数非 NULL 返回正确值。
+     */
+    @Test
+    public void mysqlToSqlServerCoalesce3ArgKeepsAsCoalesceAndExecutes() throws Exception {
+        ConversionResult r = SqlSchemaConverter.convert(
+                "SELECT COALESCE(NULL, NULL, 3)",
+                SqlDialect.MYSQL, SqlDialect.SQLSERVER);
+        String sql = r.sql();
+        assertTrue("SQL Server 3参 COALESCE 应保留 COALESCE: " + sql,
+                sql.toUpperCase().contains("COALESCE(NULL, NULL, 3)"));
+        assertFalse("SQL Server 不应被改成 ISNULL: " + sql,
+                sql.toUpperCase().contains("ISNULL"));
+        Assume.assumeNotNull(sqlServerConn);
+        try (Statement st = sqlServerConn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            assertTrue(rs.next());
+            assertEquals(3, rs.getInt(1));
+        }
+    }
+
+    /**
+     * MySQL 的 {@code COALESCE(a, b, c)}（3 参数）转 Oracle 目标时，Oracle 的
+     * {@code NVL} 仅支持 2 参数——jkit 应保留 ANSI {@code COALESCE}。
+     * 丢真 Oracle 执行验证（连接时已设 NLS_DATE_FORMAT）。
+     */
+    @Test
+    public void mysqlToOracleCoalesce3ArgKeepsAsCoalesceAndExecutes() throws Exception {
+        ConversionResult r = SqlSchemaConverter.convert(
+                "SELECT COALESCE(NULL, NULL, 3)",
+                SqlDialect.MYSQL, SqlDialect.ORACLE);
+        String sql = r.sql();
+        assertTrue("Oracle 3参 COALESCE 应保留 COALESCE: " + sql,
+                sql.toUpperCase().contains("COALESCE(NULL, NULL, 3)"));
+        assertFalse("Oracle 不应被改成 NVL: " + sql,
+                sql.toUpperCase().contains("NVL"));
+        Assume.assumeNotNull(oracleConn);
+        try (Statement st = oracleConn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            assertTrue(rs.next());
+            assertEquals(3, rs.getInt(1));
+        }
+    }
+
     private static Connection tryConnect(String url, String user, String pass, String driverClass) {
         try {
             if (driverClass != null) {
