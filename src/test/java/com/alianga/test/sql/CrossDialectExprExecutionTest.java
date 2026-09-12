@@ -34,6 +34,8 @@ import static org.junit.Assert.assertTrue;
 public class CrossDialectExprExecutionTest {
     private static PostgreSQLContainer<?> postgres;
     private static MySQLContainer<?> mysql;
+    private static Connection sqlServerConn;
+    private static Connection oracleConn;
 
     @BeforeClass
     public static void startContainers() {
@@ -60,6 +62,20 @@ public class CrossDialectExprExecutionTest {
         } catch (RuntimeException e) {
             Assume.assumeNoException("Could not start mysql:8.0.36 from local images", e);
         }
+        // 本机已在运行的 SQL Server 2017 / Oracle 11g 实例，直接连；连不上则相关用例 skip
+        sqlServerConn = tryConnect(
+                "jdbc:sqlserver://127.0.0.1:1433;databaseName=master;encrypt=false;trustServerCertificate=true",
+                "sa", "Ireport@2025", "com.microsoft.sqlserver.jdbc.SQLServerDriver");
+        oracleConn = tryConnect(
+                "jdbc:oracle:thin:@localhost:1521:ORCL", "ZML", "mingliang",
+                "oracle.jdbc.OracleDriver");
+        if (oracleConn != null) {
+            try (Statement st = oracleConn.createStatement()) {
+                st.execute("ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD'");
+            } catch (Exception ignored) {
+                // 部分驱动/实例不支持，后续依赖字符串日期解析的 Oracle 用例会 skip
+            }
+        }
     }
 
     @AfterClass
@@ -69,6 +85,18 @@ public class CrossDialectExprExecutionTest {
         }
         if (mysql != null) {
             mysql.stop();
+        }
+        if (sqlServerConn != null) {
+            try {
+                sqlServerConn.close();
+            } catch (Exception ignored) {
+            }
+        }
+        if (oracleConn != null) {
+            try {
+                oracleConn.close();
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -179,6 +207,111 @@ public class CrossDialectExprExecutionTest {
                 assertTrue(rs.next());
                 assertEquals(1, rs.getInt(1));
             }
+        }
+    }
+
+    /**
+     * PG 的 {@code a || b} 在 SQL Server 上必须改写成 CONCAT(a, b)（SQL Server 不支持 || 拼接），
+     * 丢真 SQL Server 执行验证拼接结果正确。
+     */
+    @Test
+    public void pgToSqlServerConcatOperatorExecutes() throws Exception {
+        Assume.assumeNotNull(sqlServerConn);
+        ConversionResult r = SqlSchemaConverter.convert(
+                "SELECT 'x' || 'y'", SqlDialect.POSTGRES, SqlDialect.SQLSERVER);
+        String sql = r.sql();
+        assertTrue("SQL Server 应改写成 CONCAT: " + sql, sql.toUpperCase().contains("CONCAT"));
+        try (Statement st = sqlServerConn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            assertTrue(rs.next());
+            assertEquals("xy", rs.getString(1));
+        }
+    }
+
+    /**
+     * MySQL 的 DATE_ADD(a, INTERVAL 3 DAY) 在 SQL Server 上应变成 {@code DATEADD(day, 3, a)}，
+     * 丢真 SQL Server 执行验证日期加 3 天正确。
+     */
+    @Test
+    public void mysqlToSqlServerDateAddExecutes() throws Exception {
+        Assume.assumeNotNull(sqlServerConn);
+        ConversionResult r = SqlSchemaConverter.convert(
+                "SELECT DATE_ADD('2024-01-01', INTERVAL 3 DAY)",
+                SqlDialect.MYSQL, SqlDialect.SQLSERVER);
+        String sql = r.sql();
+        assertTrue("SQL Server 应产出 DATEADD: " + sql, sql.toUpperCase().contains("DATEADD"));
+        try (Statement st = sqlServerConn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            assertTrue(rs.next());
+            assertEquals(java.sql.Date.valueOf("2024-01-04"), rs.getDate(1));
+        }
+    }
+
+    /**
+     * MySQL 的 DATE_ADD(a, INTERVAL 3 DAY) 在 Oracle 上应变成 {@code CAST(a AS DATE) + INTERVAL '3' DAY}，
+     * 丢真 Oracle 执行验证日期加 3 天正确（连接时已设 NLS_DATE_FORMAT=YYYY-MM-DD）。
+     */
+    @Test
+    public void mysqlToOracleDateAddExecutes() throws Exception {
+        Assume.assumeNotNull(oracleConn);
+        ConversionResult r = SqlSchemaConverter.convert(
+                "SELECT DATE_ADD('2024-01-01', INTERVAL 3 DAY)",
+                SqlDialect.MYSQL, SqlDialect.ORACLE);
+        String sql = r.sql();
+        assertTrue("Oracle 应产出 INTERVAL 字面量: " + sql,
+                sql.toUpperCase().contains("INTERVAL") && sql.toUpperCase().contains("CAST"));
+        try (Statement st = oracleConn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            assertTrue(rs.next());
+            assertEquals(java.sql.Date.valueOf("2024-01-04"), rs.getDate(1));
+        }
+    }
+
+    /**
+     * MySQL 的 DATEDIFF(d1, d2) 在 Oracle 上应变成 {@code TRUNC(d1) - TRUNC(d2)}，
+     * 丢真 Oracle 执行验证返回整数天差。
+     */
+    @Test
+    public void mysqlToOracleDatediffExecutes() throws Exception {
+        Assume.assumeNotNull(oracleConn);
+        ConversionResult r = SqlSchemaConverter.convert(
+                "SELECT DATEDIFF('2024-01-04', '2024-01-01')",
+                SqlDialect.MYSQL, SqlDialect.ORACLE);
+        String sql = r.sql();
+        assertTrue("Oracle 应产出 TRUNC 相减: " + sql, sql.toUpperCase().contains("TRUNC"));
+        try (Statement st = oracleConn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            assertTrue(rs.next());
+            assertEquals(3, rs.getInt(1));
+        }
+    }
+
+    /**
+     * 已知语义断点（不执行真库）：MySQL 的 DATEDIFF(d1, d2)（2 参数）转 SQL Server 目标时，
+     * jkit 目前保留原文——但 SQL Server 的 DATEDIFF 必须 3 参数（{@code DATEDIFF(day, d2, d1)}），
+     * 原文 2 参数在真 SQL Server 上会报语法错。这里只锁「保留原文」行为，后续应让 jkit 对
+     * SQL Server 目标也展开成 DATEDIFF(day, d2, d1)。
+     */
+    @Test
+    public void mysqlToSqlServerDatediffKeepsSource() {
+        Assume.assumeNotNull(sqlServerConn);
+        ConversionResult r = SqlSchemaConverter.convert(
+                "SELECT DATEDIFF('2024-01-04', '2024-01-01')",
+                SqlDialect.MYSQL, SqlDialect.SQLSERVER);
+        String sql = r.sql();
+        assertTrue("SQL Server 目标 DATEDIFF 应保留原文: " + sql,
+                sql.toUpperCase().contains("DATEDIFF('2024-01-04'"));
+    }
+
+    private static Connection tryConnect(String url, String user, String pass, String driverClass) {
+        try {
+            if (driverClass != null) {
+                Class.forName(driverClass);
+            }
+            return DriverManager.getConnection(url, user, pass);
+        } catch (Exception e) {
+            System.out.println("[skip] " + url + " -> " + e.getMessage());
+            return null;
         }
     }
 
