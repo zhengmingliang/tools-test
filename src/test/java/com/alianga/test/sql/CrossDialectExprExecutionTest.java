@@ -287,20 +287,27 @@ public class CrossDialectExprExecutionTest {
     }
 
     /**
-     * 已知语义断点（不执行真库）：MySQL 的 DATEDIFF(d1, d2)（2 参数）转 SQL Server 目标时，
-     * jkit 目前保留原文——但 SQL Server 的 DATEDIFF 必须 3 参数（{@code DATEDIFF(day, d2, d1)}），
-     * 原文 2 参数在真 SQL Server 上会报语法错。这里只锁「保留原文」行为，后续应让 jkit 对
-     * SQL Server 目标也展开成 DATEDIFF(day, d2, d1)。
+     * MySQL 的 {@code DATEDIFF(d1, d2)}（2 参数）在 SQL Server 目标上必须展开为
+     * {@code DATEDIFF(day, d2, d1)}——SQL Server 的 DATEDIFF 必填 datepart，且参数顺序
+     * 也相反（{@code DATEDIFF(datepart, startdate, enddate) = end - start}）。
+     * 丢真 SQL Server 执行验证返回 3。
      */
     @Test
-    public void mysqlToSqlServerDatediffKeepsSource() {
-        Assume.assumeNotNull(sqlServerConn);
+    public void mysqlToSqlServerDatediffRewrittenAndExecutes() throws Exception {
+        // 形态断言：始终跑，不依赖真库在线
         ConversionResult r = SqlSchemaConverter.convert(
                 "SELECT DATEDIFF('2024-01-04', '2024-01-01')",
                 SqlDialect.MYSQL, SqlDialect.SQLSERVER);
         String sql = r.sql();
-        assertTrue("SQL Server 目标 DATEDIFF 应保留原文: " + sql,
-                sql.toUpperCase().contains("DATEDIFF('2024-01-04'"));
+        assertTrue("SQL Server 2参 DATEDIFF 应展开为 DATEDIFF(day, '2024-01-01', '2024-01-04'): " + sql,
+                sql.toUpperCase().contains("DATEDIFF(DAY, '2024-01-01', '2024-01-04')"));
+        // 真库执行：仅当 sqlServer 在线
+        Assume.assumeNotNull(sqlServerConn);
+        try (Statement st = sqlServerConn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            assertTrue(rs.next());
+            assertEquals(3, rs.getInt(1));
+        }
     }
 
     private static Connection tryConnect(String url, String user, String pass, String driverClass) {
