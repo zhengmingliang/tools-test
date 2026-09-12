@@ -41,6 +41,7 @@ import java.util.Map;
 
 import javax.sql.DataSource;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -53,6 +54,8 @@ import static org.junit.Assert.assertTrue;
 public class LocalDatasourceSqlAutoTest {
     private static final String ORG = "jkit_sql_auto_org";
     private static final String USER = "jkit_sql_auto_user";
+    private static final String FILE = "jkit_sql_auto_file";
+    private static final String FILE_SRC = "jkit_sql_auto_filesrc";
 
     private static Map<String, Ds> sources = new LinkedHashMap<String, Ds>();
 
@@ -173,10 +176,25 @@ public class LocalDatasourceSqlAutoTest {
             base.autoIncrement(false).foreignKeys(false).createIndex(false);
         }
 
-        SqlAutoPlan created = SqlAuto.run(base.entities(User.class, Org.class).mode(SqlAutoMode.UPDATE));
+        SqlAutoPlan created = SqlAuto.run(base.entities(User.class, Org.class, FileDoc.class, FileSrc.class)
+                .mode(SqlAutoMode.UPDATE));
         assertFalse(created.ofKind(SqlAutoChange.Kind.CREATE_TABLE).isEmpty());
         assertTrue(tableExists(ds, ORG));
         assertTrue(tableExists(ds, USER));
+        assertTrue(tableExists(ds, FILE));
+        assertTrue(tableExists(ds, FILE_SRC));
+        assertFalse("varchar UUID pk must not use IDENTITY/AUTO_INCREMENT on " + key,
+                createSql(created, FILE).toUpperCase(Locale.ROOT).contains("IDENTITY")
+                        || createSql(created, FILE).toUpperCase(Locale.ROOT).contains("AUTO_INCREMENT")
+                        || createSql(created, FILE).toUpperCase(Locale.ROOT).contains("SERIAL"));
+        assertTrue(createSql(created, FILE).toUpperCase(Locale.ROOT).contains("PRIMARY KEY"));
+        String srcSql = createSql(created, FILE_SRC);
+        int ct = srcSql.indexOf("create_time");
+        assertTrue(srcSql, ct >= 0);
+        assertEquals("create_time must appear once on " + key, -1, srcSql.indexOf("create_time", ct + 1));
+        int ut = srcSql.indexOf("update_time");
+        assertTrue(srcSql, ut >= 0);
+        assertEquals("update_time must appear once on " + key, -1, srcSql.indexOf("update_time", ut + 1));
 
         assertColumn(ds, USER, "id");
         assertColumn(ds, USER, "user_name");
@@ -215,18 +233,22 @@ public class LocalDatasourceSqlAutoTest {
             assertTrue("fk org_id missing on " + key, foreignKeyExists(ds, USER, ORG));
         }
 
-        SqlAutoPlan again = SqlAuto.run(base.entities(User.class, Org.class).mode(SqlAutoMode.UPDATE));
+        SqlAutoPlan again = SqlAuto.run(base.entities(User.class, Org.class, FileDoc.class, FileSrc.class)
+                .mode(SqlAutoMode.UPDATE));
         assertTrue(again.ofKind(SqlAutoChange.Kind.CREATE_TABLE).isEmpty());
         assertTrue(again.ofKind(SqlAutoChange.Kind.ADD_COLUMN).isEmpty());
 
-        SqlAutoPlan added = SqlAuto.run(base.entities(UserV2.class, Org.class).mode(SqlAutoMode.UPDATE));
+        SqlAutoPlan added = SqlAuto.run(base.entities(UserV2.class, Org.class, FileDoc.class, FileSrc.class)
+                .mode(SqlAutoMode.UPDATE));
         assertFalse(added.toString(), added.ofKind(SqlAutoChange.Kind.ADD_COLUMN).isEmpty());
         assertColumn(ds, USER, "nickname");
 
-        SqlAutoPlan dropped = SqlAuto.drop(base.entities(UserV2.class, Org.class));
+        SqlAutoPlan dropped = SqlAuto.drop(base.entities(UserV2.class, Org.class, FileDoc.class, FileSrc.class));
         assertFalse(dropped.ofKind(SqlAutoChange.Kind.DROP_TABLE).isEmpty());
         assertFalse(tableExists(ds, USER));
         assertFalse(tableExists(ds, ORG));
+        assertFalse(tableExists(ds, FILE));
+        assertFalse(tableExists(ds, FILE_SRC));
     }
 
     private static boolean supportsComment(String key, SqlDialect dialect) {
@@ -610,8 +632,12 @@ public class LocalDatasourceSqlAutoTest {
         List<String> sqls = new ArrayList<String>();
         sqls.add("DROP TABLE IF EXISTS " + USER);
         sqls.add("DROP TABLE IF EXISTS " + ORG);
+        sqls.add("DROP TABLE IF EXISTS " + FILE);
+        sqls.add("DROP TABLE IF EXISTS " + FILE_SRC);
         sqls.add("DROP TABLE " + USER);
         sqls.add("DROP TABLE " + ORG);
+        sqls.add("DROP TABLE " + FILE);
+        sqls.add("DROP TABLE " + FILE_SRC);
         sqls.add("DROP SEQUENCE " + USER + "_id_seq");
         sqls.add("DROP SEQUENCE " + ORG + "_id_seq");
         sqls.add("DROP SEQUENCE IF EXISTS " + USER + "_id_seq");
@@ -762,6 +788,88 @@ public class LocalDatasourceSqlAutoTest {
             url = "jdbc:opengauss:" + url.substring("jdbc:gaussdb:".length());
         }
         map.put(section, new Ds(url, user == null ? "" : user, password == null ? "" : password));
+    }
+
+    private static String createSql(SqlAutoPlan plan, String table) {
+        List<SqlAutoChange> tables = plan.ofKind(SqlAutoChange.Kind.CREATE_TABLE);
+        for (int i = 0; i < tables.size(); i++) {
+            if (table.equalsIgnoreCase(tables.get(i).table())) {
+                return tables.get(i).sql();
+            }
+        }
+        return "";
+    }
+
+    /**
+     * 字符串 UUID 主键（对齐 FileStorageEntity：{@code @GeneratedValue(generator = "system-uuid")}）。
+     */
+    @SqlTable(name = FILE)
+    public static class FileDoc {
+        @SqlId
+        @SqlGenerated
+        @SqlColumn(name = "id", length = 32)
+        public String id;
+
+        @SqlColumn(name = "source_desc")
+        public String desc;
+
+        @SqlColumn(name = "source_name")
+        public String fileSourceName;
+
+        @SqlColumn(name = "real_name")
+        public String realName;
+
+        @SqlColumn(name = "file_type")
+        public String type;
+
+        public Integer delimiter;
+
+        @SqlColumn(name = "fields")
+        public String fields;
+
+        @SqlColumn(name = "user_id")
+        public String userId;
+
+        @SqlColumn(name = "read_start")
+        public Integer start;
+
+        public Boolean canView;
+
+        public Date createTime;
+
+        public Date updateTime;
+
+        @SqlColumn(name = "tenant_id")
+        public String tenantId;
+    }
+
+    /**
+     * 对齐 FileSourceEntity：子类与父类都声明 create_time / update_time。
+     */
+    public static class BaseDoc {
+        public Date createTime;
+        public Date updateTime;
+        public Boolean canView;
+        public String tenantId;
+    }
+
+    /**
+     * 文件源：子类重复父类时间列。
+     */
+    @SqlTable(name = FILE_SRC)
+    public static class FileSrc extends BaseDoc {
+        @SqlId
+        @SqlGenerated
+        @SqlColumn(name = "id", length = 32)
+        public String id;
+
+        public String title;
+
+        public Date createTime;
+
+        public Date updateTime;
+
+        public String creatorId;
     }
 
     /**
