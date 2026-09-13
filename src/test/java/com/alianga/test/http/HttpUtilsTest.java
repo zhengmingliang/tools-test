@@ -1,9 +1,25 @@
-package com.alianga.jkit.http;
+package com.alianga.test.http;
 
 import com.alianga.jkit.HttpUtils;
+import com.alianga.jkit.IOUtils;
+import com.alianga.jkit.http.CookieJarImpl;
+import com.alianga.jkit.http.CurlRequest;
+import com.alianga.jkit.http.HttpCall;
+import com.alianga.jkit.http.HttpCallBack;
+import com.alianga.jkit.http.HttpEngine;
+import com.alianga.jkit.http.HttpEngines;
+import com.alianga.jkit.http.HttpRequest;
+import com.alianga.jkit.http.HttpResponse;
+import com.alianga.jkit.http.SseEvent;
+import com.alianga.jkit.http.SseListener;
+import com.alianga.jkit.http.UploadInfo;
 import com.alianga.jkit.jdk.JdkUtils;
+import com.alianga.jkit.json.JSON;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+import org.brotli.dec.BrotliInputStream;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -24,7 +40,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -224,7 +243,7 @@ public class HttpUtilsTest {
 
     @Test
     public void downloadSyncAndFileName() throws Exception {
-        String path = HttpUtils.getFileFromHttpDataBySyn(baseUrl + "/file", "saved.bin", workDir.getAbsolutePath());
+        String path = HttpUtils.getFileFromHttpDataBySyn("https://gh-proxy.org/https://github.com/zhangjh/suyan-site/releases/download/v5.1.0/suyan-5.1.0-Linux.deb", "suyan-5.1.0-Linux.deb", workDir.getAbsolutePath());
         assertNotNull(path);
         File saved = new File(path);
         assertTrue(saved.isFile());
@@ -242,12 +261,101 @@ public class HttpUtilsTest {
     }
 
     @Test
+    public void download() throws IOException, ExecutionException, InterruptedException {
+        String url = "https://github.com/sxyazi/yazi/releases/download/v26.8.15/yazi-x86_64-unknown-linux-gnu.deb";
+//        String download =
+//                HttpUtils.download(url);
+//        System.out.println("download = " + download);
+        File file = new File("/opt/softwares/yazi-x86_64-unknown-linux-gnu.deb");
+        Future<String> future = HttpUtils.downloadAsync(url, file);
+        HttpUtils.downloadAsync(url, file);
+        String path = future.get();
+        System.out.println("path = " + path);
+        HttpRequest request = HttpRequest.delete(url);
+    }
+
+
+
+    @Test
+    public void sseEvents() throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        CopyOnWriteArrayList<SseEvent> events = new CopyOnWriteArrayList<SseEvent>();
+        Map<String, String> header = new HashMap<>();
+        header.put("Authorization", "Bearer sk-QxLm5xjRrSpsdcHf8IgOOR37drlo63er");
+        Map<String, Object> body = new HashMap<>();
+        HttpCall call = HttpUtils.sseJson("https://token.sensenova.cn/v1/chat/completions", "{\n" +
+                "    \"model\": \"sensenova-6.8-flash-lite\",\n" +
+                "    \"messages\": [{\"role\": \"user\", \"content\": \"Hello!\"}],\n" +
+                "  \"stream\" : true\n" +
+                "  }",header, new SseListener() {
+            @Override
+            public void onEvent(SseEvent event) {
+                System.out.println("event = " + event);
+                events.add(event);
+            }
+
+            @Override
+            public void onOpen(HttpResponse response) {
+                System.out.println("response = " + response);
+            }
+
+            @Override
+            public void onError(IOException e) {
+                System.out.println("e = " + e);
+            }
+
+            @Override
+            public void onComment(String comment) {
+                System.out.println("comment = " + comment);
+            }
+
+            @Override
+            public void onClosed() {
+                latch.countDown();
+            }
+        });
+        assertTrue(latch.await(10, TimeUnit.SECONDS));
+        assertTrue(call != null);
+        assertTrue(events.size() >= 2);
+//        assertEquals("hello", events.get(0).getData());
+        assertEquals("ping", events.get(1).getEvent());
+        String data = events.get(1).getData();
+        System.out.println("data = " + data);
+    }
+
+    @Test
+    public void curlTest() throws IOException {
+        String curl = "curl 'https://api.choerodon.com.cn/cbase/choerodon/v1/captcha/send-phone-captcha?phone" +
+                "=17897432573' -H 'User-Agent: EasyPostman/v4.2.9' -H 'Accept: */*' -H 'Accept-Encoding: gzip, " +
+                "deflate, br' -H 'Connection: keep-alive' -H 'h-menu-id: 0' -H 'h-tenant-id: 0' -H 'pragma: no-cache' -H 'priority: u=1, i'";
+        String url = "https://api.choerodon.com.cn/cbase/choerodon/v1/captcha/send-phone-captcha?phone=17897432573";
+        Map<String, String> header = new HashMap<>();
+        header.put("User-Agent", "EasyPostman/v4.2.9");
+        header.put("Accept-Encoding", "gzip, deflate, br");
+        header.put("Content-Type", "application/json");
+        header.put("Accept", "*/*");
+        header.put("Accept-Language", "en-US,en;q=0.5");
+        header.put("Connection", "keep-alive");
+        header.put("h-menu-id", "0");
+        header.put("h-tenant-id", "0");
+        header.put("pragma", "no-cache");
+        header.put("priority", "u=1, i");
+
+        Response response = top.wys.utils.HttpUtils.getResponse(url, null, header);
+        System.out.println("response headers: "+response.headers());
+        ResponseBody body = response.body();
+
+        BrotliInputStream brInputStream = new BrotliInputStream(response.body().byteStream());
+        System.out.println("result: "+ IOUtils.is2String(brInputStream));
+    }
+    @Test
     public void downloadAsyncWithCallback() throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<String> path = new AtomicReference<String>();
         AtomicReference<IOException> error = new AtomicReference<IOException>();
         AtomicLong processed = new AtomicLong();
-        HttpUtils.getFileFromHttpDataByAsyn(baseUrl + "/file", "async.bin", workDir.getAbsolutePath(),
+        HttpUtils.downloadAsync( "https://gh-proxy.org/https://github.com/zhangjh/suyan-site/releases/download/v5.1" +
+                        ".0/suyan-5.1.0-Linux.deb", "Dworkbuddy_5.3.13_amd64.deb", workDir.getAbsolutePath(),
                 new HttpCallBack<String>() {
                     @Override
                     public void onFailure(HttpCall call, IOException e) {
@@ -257,11 +365,14 @@ public class HttpUtilsTest {
 
                     @Override
                     public void onProcess(long process, long total) {
+                        System.out.println("process=" + process + ", total = " + total);
                         processed.addAndGet(process);
                     }
 
                     @Override
                     public void onResponse(HttpCall call, HttpResponse response, String result) {
+                        System.out.println(
+                                "call = " + call + ", response = " + response);
                         path.set(result);
                         latch.countDown();
                     }
@@ -271,6 +382,7 @@ public class HttpUtilsTest {
         assertNotNull(path.get());
         assertTrue(new File(path.get()).isFile());
         assertTrue(processed.get() > 0);
+        TimeUnit.SECONDS.sleep(10);
     }
 
     @Test
@@ -284,6 +396,41 @@ public class HttpUtilsTest {
         try {
             String value = HttpUtils.getCookieValue(response);
             assertTrue(value.contains("sid=abc"));
+        } finally {
+            response.close();
+        }
+    }
+    @Test
+    public void cookieJarRoundTrip2() throws Exception {
+        String url = "https://chat.qwen.ai/api/v2/models/";
+        Map<String, String> headers = new HashMap<String, String>();
+        headers.put("Cookie",
+                "cna=11cwIty3JisCAUUhDdkpBDFD; _bl_uid=wLm2UobLbFq67L2v64gqgs321ydI; qwen-theme=light; qwen-locale=zh-CN; _gcl_au=1.1.1394719267.1780554038; sca=e1daacae; cnaui=a56c06cd-8a19-4aa4-822b-3eca0774391b; aui=a56c06cd-8a19-4aa4-822b-3eca0774391b; x-ap=ap-southeast-1; acw_tc=0a03e59317878260255484212e2386c972fdd28b537447cb1029600de0ded1; token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE1NmMwNmNkLThhMTktNGFhNC04MjJiLTNlY2EwNzc0MzkxYiIsImxhc3RfcGFzc3dvcmRfY2hhbmdlIjoxNzY5NDczODYxLCJleHAiOjE3ODg0MzA4MzB9.PtEKfFYcrDiqT6Mf-kE8Y0cgIatEhy33jtG5ZQmI5lE; atpsida=eb07cc2cd6ac74c734831197_1787826031_1; xlly_s=1; tfstk=gL1j5xsvSexr4AUYXmzzORUdqMA11zPEDVTO-NhqWIdvfVsNJdLqgrX1FGSXDsRvk33J8ETtMjQx2AT9RKhTIrVRNGTx6qQxMCgJJMn9XxptC0I9MdX2bn-61NjQzkPUTZbDshEUYWyUilbJshFw68RRKjkLQkPUTZHUpEjUYORCmNLMWCLvDdQ8PeLv6AHAX3pJJeov6CITPQL2SmnxMnhJwetJXCdOXaUWS3Lv6CIOyzTifwhWS-Tdl7NwzCW7yHbvVfhOM5vXAaHZ6fCXlK1dk3grz_TXhH9s9I2O1w_OgQ6IX-QBZ6JNw6FsZI7CeQLFoSGW9ZBViIW7qYtRNNCDLCNrHBQ5BMTlMWoXrt7R83QIJXQDG91BMtZoEISfwIxA4SiRbi5VfsR_Z4xAKTSAwC0Ina9OUsvhguhX99b2gOIgLYAfWtIHKT4tEUXAV_9hsmsymX-ICHDsPpc6PHz7PADgysIK0UENpi9vrEKUPzimIKLkPnz7PAmeHUYj7zaSDE1..; isg=BBoataeQJIVPT6sQPdpuWzOMa8k8S54ltLhLBSSTw614l7rRDNxNNX9hZ2MLQxa9; ssxmod_itna2=1-Yq0xc7itG=PCqYKi70eGQG7oD=GO93eDzxC5iO7DuOxjKidqDUnPNDDwpYmqxV0_6xtFBAwAxqexD3r1bALA=DLBm84Dlg4eeEUS0c2ILySnpGWYqGDOl_=bxb10aYeItPRKkeR9xoSulLNkFifVeeKhQQ0gCoXeQl=eh0K5iLieoAQYrnhE3q2PQAddVYdPS44i6oL=3nrUilwUBj2xKcPKu3XUD62rVCUMikq2FMaciLqqUfwYSS6=CDd7m83qeptUCxbMU_vzdch9GnPq3kwgK7wuCm3FTvdNGkUt3k67=7qrjreVM5G5x3ZGDV0K/oxMhsdQG9iDD; ssxmod_itna=1-YqfxuD9DgDnD0AD2DUxeFWxKqYKGjQxryK4GHDyxW9K0C1DLxnRDGdKnqt1pWDBQckD45q7GYbmbZBxGXYe3xiNDAPq0iDCfWQKZC0q2e5ezK2gGob3pLMOXtaG7GT5TQVCtqqQOyuZCQmwtM7Rh4dO_bDGoDbqDyDAtD0qDimj5eDBde7AeqKAeD44dDtbrD3_bDixdDj4GmDGAHqpbLDB=DmqDBn64DAw2k1eDFAnaOEpbbTxDwn=wWAeDEDG3D0_R5K_bPL7ysX1ypxD3Df4GHYyfHTx1DISZT507Dz8yWCnW6EhD8CDDE0eb1LkxGuDDkbMat3qn7aYkFc4HlRHxk7DC=QGN1SdshDt2DrA5=0xoATZDNY0D=ATAhD37DZGQ2h5p0wyjemdvBmxr0eelG3mbQnh3h5TAi3cis2DTiYwxxVixLxEVYYqgTbDW0QtQBEeDWsODWp53GoKYj12xW74o=oiooshf2iUyWDD");
+        String first = HttpUtils.get(url, null, headers);
+        System.out.println(first);
+        HttpResponse response = HttpUtils.getResponse(url,null, headers);
+        try {
+            String value = HttpUtils.getCookieValue(response);
+            System.out.println("value = " + value);
+            response = HttpUtils.getResponse(url,null, headers);
+            value = HttpUtils.getCookieValue(response);
+            System.out.println("value = " + value);
+        } finally {
+            response.close();
+        }
+    }
+    @Test
+    public void cookieJarRoundTrip3() throws Exception {
+        String url = "https://chat.qwen.ai/api/v2/models/";
+        Map<String, String> headers = new HashMap<String, String>();
+        headers.put("Cookie",
+                "cna=11cwIty3JisCAUUhDdkpBDFD; _bl_uid=wLm2UobLbFq67L2v64gqgs321ydI; qwen-theme=light; qwen-locale=zh-CN; _gcl_au=1.1.1394719267.1780554038; sca=e1daacae; cnaui=a56c06cd-8a19-4aa4-822b-3eca0774391b; aui=a56c06cd-8a19-4aa4-822b-3eca0774391b; x-ap=ap-southeast-1; acw_tc=0a03e59317878260255484212e2386c972fdd28b537447cb1029600de0ded1; token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE1NmMwNmNkLThhMTktNGFhNC04MjJiLTNlY2EwNzc0MzkxYiIsImxhc3RfcGFzc3dvcmRfY2hhbmdlIjoxNzY5NDczODYxLCJleHAiOjE3ODg0MzA4MzB9.PtEKfFYcrDiqT6Mf-kE8Y0cgIatEhy33jtG5ZQmI5lE; atpsida=eb07cc2cd6ac74c734831197_1787826031_1; xlly_s=1; tfstk=gL1j5xsvSexr4AUYXmzzORUdqMA11zPEDVTO-NhqWIdvfVsNJdLqgrX1FGSXDsRvk33J8ETtMjQx2AT9RKhTIrVRNGTx6qQxMCgJJMn9XxptC0I9MdX2bn-61NjQzkPUTZbDshEUYWyUilbJshFw68RRKjkLQkPUTZHUpEjUYORCmNLMWCLvDdQ8PeLv6AHAX3pJJeov6CITPQL2SmnxMnhJwetJXCdOXaUWS3Lv6CIOyzTifwhWS-Tdl7NwzCW7yHbvVfhOM5vXAaHZ6fCXlK1dk3grz_TXhH9s9I2O1w_OgQ6IX-QBZ6JNw6FsZI7CeQLFoSGW9ZBViIW7qYtRNNCDLCNrHBQ5BMTlMWoXrt7R83QIJXQDG91BMtZoEISfwIxA4SiRbi5VfsR_Z4xAKTSAwC0Ina9OUsvhguhX99b2gOIgLYAfWtIHKT4tEUXAV_9hsmsymX-ICHDsPpc6PHz7PADgysIK0UENpi9vrEKUPzimIKLkPnz7PAmeHUYj7zaSDE1..; isg=BBoataeQJIVPT6sQPdpuWzOMa8k8S54ltLhLBSSTw614l7rRDNxNNX9hZ2MLQxa9; ssxmod_itna2=1-Yq0xc7itG=PCqYKi70eGQG7oD=GO93eDzxC5iO7DuOxjKidqDUnPNDDwpYmqxV0_6xtFBAwAxqexD3r1bALA=DLBm84Dlg4eeEUS0c2ILySnpGWYqGDOl_=bxb10aYeItPRKkeR9xoSulLNkFifVeeKhQQ0gCoXeQl=eh0K5iLieoAQYrnhE3q2PQAddVYdPS44i6oL=3nrUilwUBj2xKcPKu3XUD62rVCUMikq2FMaciLqqUfwYSS6=CDd7m83qeptUCxbMU_vzdch9GnPq3kwgK7wuCm3FTvdNGkUt3k67=7qrjreVM5G5x3ZGDV0K/oxMhsdQG9iDD; ssxmod_itna=1-YqfxuD9DgDnD0AD2DUxeFWxKqYKGjQxryK4GHDyxW9K0C1DLxnRDGdKnqt1pWDBQckD45q7GYbmbZBxGXYe3xiNDAPq0iDCfWQKZC0q2e5ezK2gGob3pLMOXtaG7GT5TQVCtqqQOyuZCQmwtM7Rh4dO_bDGoDbqDyDAtD0qDimj5eDBde7AeqKAeD44dDtbrD3_bDixdDj4GmDGAHqpbLDB=DmqDBn64DAw2k1eDFAnaOEpbbTxDwn=wWAeDEDG3D0_R5K_bPL7ysX1ypxD3Df4GHYyfHTx1DISZT507Dz8yWCnW6EhD8CDDE0eb1LkxGuDDkbMat3qn7aYkFc4HlRHxk7DC=QGN1SdshDt2DrA5=0xoATZDNY0D=ATAhD37DZGQ2h5p0wyjemdvBmxr0eelG3mbQnh3h5TAi3cis2DTiYwxxVixLxEVYYqgTbDW0QtQBEeDWsODWp53GoKYj12xW74o=oiooshf2iUyWDD");
+        String first = top.wys.utils.HttpUtils.get(url, null, headers);
+        System.out.println(first);
+        Response response = top.wys.utils.HttpUtils.getResponse(url);
+        try {
+            String value = top.wys.utils.HttpUtils.getCookieValue(response);
+            System.out.println("value = " + value);
         } finally {
             response.close();
         }
