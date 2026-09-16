@@ -173,6 +173,86 @@ public class ComplexSqlExecutionIT {
         System.out.print(summary);
     }
 
+    /**
+     * 转换产物的回写稳定性：{@code SQL.convert} 出来的目标方言 SQL，再走一遍
+     * {@code parse → toSqlString} 后在同一目标库上结果集必须一致。
+     *
+     * <p>与回写对照的区别在于起点是改写器生成的树（带改写器设置的
+     * {@code parenthesized} 标记），而不是 parser 直接解析源文得到的树。
+     * 同库比对，没有跨库噪音，可以进门禁。</p>
+     */
+    @Test
+    public void convertedRewriteStable() throws Exception {
+        Assume.assumeTrue(oracle != null || sqlserver != null || postgres != null);
+        List<String> ids = selectedIds();
+        Map<String, String> mysqlSqls = loadSqls("mysql_complex_300.sql");
+        StringBuilder summary = new StringBuilder();
+        int fail = 0;
+        if (oracle != null) {
+            fail += runConvertedRewriteCompare(oracle, SqlDialect.ORACLE12, mysqlSqls, ids, summary);
+        }
+        if (sqlserver != null) {
+            fail += runConvertedRewriteCompare(sqlserver, SqlDialect.SQLSERVER, mysqlSqls, ids, summary);
+        }
+        if (postgres != null) {
+            fail += runConvertedRewriteCompare(postgres, SqlDialect.POSTGRES, mysqlSqls, ids, summary);
+        }
+        write("l4-convert-rewrite-compare.txt", summary.toString());
+        System.out.print(summary);
+        assertTrue("converted rewrite mismatches " + fail + "\n" + summary, fail == 0);
+    }
+
+    private static int runConvertedRewriteCompare(Connection c, SqlDialect target,
+                                                  Map<String, String> mysqlSqls,
+                                                  List<String> ids, StringBuilder summary) {
+        int fail = 0;
+        skipped = 0;
+        for (int i = 0; i < ids.size(); i++) {
+            String id = ids.get(i);
+            summary.append("CR MYSQL->").append(target).append(' ').append(id);
+            String converted;
+            try {
+                converted = SQL.convert(mysqlSqls.get(id), SqlDialect.MYSQL, target);
+            } catch (RuntimeException e) {
+                summary.append(" CONVERT_FAIL err=").append(e.getClass().getSimpleName()).append('\n');
+                continue;
+            }
+            Result base = fetch(c, decorate(target, id, converted));
+            if (!base.ok) {
+                // 转换产物本身就跑不通是转换的问题，由 convertedMysqlExecutes 兜，这里跳过
+                skipped++;
+                summary.append(" BASE_SKIP err=").append(base.error).append('\n');
+                continue;
+            }
+            String rewritten;
+            try {
+                rewritten = SQL.toSqlString(SQL.parse(converted, target), target);
+            } catch (RuntimeException e) {
+                fail++;
+                summary.append(" REWRITE_FAIL err=").append(e.getClass().getSimpleName()).append('\n');
+                continue;
+            }
+            Result after = fetch(c, decorate(target, id, rewritten));
+            summary.append(" rows=").append(base.rows.size()).append("->").append(after.rows.size())
+                    .append(" cols=").append(base.cols).append("->").append(after.cols);
+            if (!after.ok) {
+                fail++;
+                summary.append(" REWRITTEN_FAIL err=").append(after.error).append('\n');
+                continue;
+            }
+            String diff = diffOf(base, after);
+            if (diff != null) {
+                fail++;
+                summary.append(" MISMATCH ").append(diff);
+            } else {
+                summary.append(" same");
+            }
+            summary.append('\n');
+        }
+        System.out.println("[convert-rewrite-compare] " + target + " fail=" + fail + " skipped=" + skipped);
+        return fail;
+    }
+
     private static int runConvertCompare(Connection c, SqlDialect target, Map<String, String> mysqlSqls,
                                          List<String> ids, StringBuilder summary) {
         int fail = 0;
