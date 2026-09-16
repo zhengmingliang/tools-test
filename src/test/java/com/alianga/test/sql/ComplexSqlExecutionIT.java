@@ -18,7 +18,9 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.Statement;
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +41,8 @@ public class ComplexSqlExecutionIT {
     private static final Pattern MARKER = Pattern.compile(
             "^-- \\[(\\d+)\\]\\s*(.+?)\\s*$", Pattern.MULTILINE);
     private static final String[] DEFAULT_IDS = {"001", "022", "211"};
+    /** 结果集行内列分隔符，用不可见字符避免与数据里的逗号冲突。 */
+    private static final char SEP = '\u0001';
     private static final Path CORPUS = Paths.get(
             "/opt/workspace/zml/jkit/jkit-sql/src/test/resources/sqls/complex-sql");
 
@@ -117,6 +121,27 @@ public class ComplexSqlExecutionIT {
     }
 
     /**
+     * 回写对照：{@code parse → toSqlString} 后的 SQL 与原文在同一库、同一批数据上执行，
+     * 列数、行数与规范化后的每行数据必须完全一致。
+     *
+     * <p>这是唯一能抓到「回写改了语义但仍能执行」这类 bug 的层：(a - b) / c 被写成
+     * a - b / c 后照样跑得通，只有结果集对不上。</p>
+     */
+    @Test
+    public void rewrittenMatchesOriginal() throws Exception {
+        Assume.assumeTrue(mysql != null || oracle != null || sqlserver != null);
+        List<String> ids = selectedIds();
+        StringBuilder summary = new StringBuilder();
+        int fail = 0;
+        fail += runRewriteCompare(mysql, SqlDialect.MYSQL, "mysql_complex_300.sql", ids, summary);
+        fail += runRewriteCompare(oracle, SqlDialect.ORACLE12, "oracle_complex_300.sql", ids, summary);
+        fail += runRewriteCompare(sqlserver, SqlDialect.SQLSERVER, "sqlserver_complex_300.sql", ids, summary);
+        write("l4-rewrite-compare.txt", summary.toString());
+        System.out.print(summary);
+        assertTrue("rewrite mismatch " + fail + "\n" + summary, fail == 0);
+    }
+
+    /**
      * MySQL 原文经 convert 后在 Oracle12 / SQL Server 可执行。
      */
     @Test
@@ -161,6 +186,130 @@ public class ComplexSqlExecutionIT {
             summary.append('\n');
         }
         return fail;
+    }
+
+    private static int runRewriteCompare(Connection c, SqlDialect dialect, String file,
+                                         List<String> ids, StringBuilder summary) throws Exception {
+        if (c == null) {
+            summary.append("skip ").append(dialect).append('\n');
+            return 0;
+        }
+        Map<String, String> sqls = loadSqls(file);
+        int fail = 0;
+        for (int i = 0; i < ids.size(); i++) {
+            String id = ids.get(i);
+            String sql = sqls.get(id);
+            summary.append("RW ").append(dialect).append(' ').append(id);
+            Result base = fetch(c, decorate(dialect, id, sql));
+            if (!base.ok) {
+                // 原文就跑不通，不是回写的锅，跳过对照
+                fail++;
+                summary.append(" BASE_FAIL err=").append(base.error).append('\n');
+                continue;
+            }
+            String rewritten;
+            try {
+                rewritten = SQL.toSqlString(SQL.parse(sql, dialect), dialect);
+            } catch (RuntimeException e) {
+                fail++;
+                summary.append(" REWRITE_FAIL err=").append(e.getClass().getSimpleName()).append('\n');
+                continue;
+            }
+            Result after = fetch(c, decorate(dialect, id, rewritten));
+            summary.append(" rows=").append(base.rows.size()).append("->").append(after.rows.size())
+                    .append(" cols=").append(base.cols).append("->").append(after.cols);
+            if (!after.ok) {
+                fail++;
+                summary.append(" REWRITTEN_FAIL err=").append(after.error).append('\n');
+                continue;
+            }
+            String diff = diffOf(base, after);
+            if (diff != null) {
+                fail++;
+                summary.append(" MISMATCH ").append(diff);
+            } else {
+                summary.append(" same");
+            }
+            summary.append('\n');
+        }
+        return fail;
+    }
+
+    /**
+     * 取回结果集并规范化：数字去掉尾随零，行内用 SEP 分隔，行间排序以消除不稳定顺序。
+     */
+    private static Result fetch(Connection c, String sql) {
+        Result out = new Result();
+        out.rows = new ArrayList<String>();
+        long t0 = System.currentTimeMillis();
+        try (Statement st = c.createStatement()) {
+            st.setMaxRows(50);
+            st.setQueryTimeout(30);
+            try (ResultSet rs = st.executeQuery(sql)) {
+                out.cols = rs.getMetaData().getColumnCount();
+                while (rs.next()) {
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 1; i <= out.cols; i++) {
+                        if (i > 1) {
+                            sb.append(SEP);
+                        }
+                        sb.append(normalize(rs.getObject(i)));
+                    }
+                    out.rows.add(sb.toString());
+                }
+                out.ok = true;
+            }
+        } catch (Exception e) {
+            out.ok = false;
+            String msg = e.getMessage();
+            out.error = msg == null ? e.getClass().getSimpleName()
+                    : msg.replace('\n', ' ').replace('\r', ' ');
+            if (out.error.length() > 240) {
+                out.error = out.error.substring(0, 240);
+            }
+        }
+        out.ms = System.currentTimeMillis() - t0;
+        Collections.sort(out.rows);
+        return out;
+    }
+
+    private static String normalize(Object v) {
+        if (v == null) {
+            return "\u0000NULL";
+        }
+        if (v instanceof Number) {
+            try {
+                return new BigDecimal(v.toString()).stripTrailingZeros().toPlainString();
+            } catch (NumberFormatException ignored) {
+                return v.toString();
+            }
+        }
+        return v.toString().trim();
+    }
+
+    /**
+     * 返回 null 表示一致，否则返回首个差异的可读描述。
+     */
+    private static String diffOf(Result a, Result b) {
+        if (a.cols != b.cols) {
+            return "cols " + a.cols + " vs " + b.cols;
+        }
+        if (a.rows.size() != b.rows.size()) {
+            return "rows " + a.rows.size() + " vs " + b.rows.size();
+        }
+        for (int i = 0; i < a.rows.size(); i++) {
+            String x = a.rows.get(i);
+            String y = b.rows.get(i);
+            if (!x.equals(y)) {
+                return "row" + i + " [" + clip(x) + "] vs [" + clip(y) + "]";
+            }
+        }
+        return null;
+    }
+
+    private static String clip(String s) {
+        String t = s.replace(SEP, ',');
+        return t.length() > 160 ? t.substring(0, 160) + "..." : t;
     }
 
     private static int runConverted(Connection c, SqlDialect target, Map<String, String> mysqlSqls,
@@ -352,5 +501,14 @@ public class ComplexSqlExecutionIT {
         private int cols;
         private long ms;
         private String error;
+    }
+
+    /** 带规范化数据的执行结果，用于回写对照。 */
+    private static final class Result {
+        private boolean ok;
+        private int cols;
+        private long ms;
+        private String error;
+        private List<String> rows;
     }
 }
