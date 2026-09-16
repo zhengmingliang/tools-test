@@ -138,6 +138,85 @@ public class ComplexSqlExecutionIT {
     }
 
     /**
+     * 转换对照：MySQL 原文在 MySQL 库的结果集，与 {@code SQL.convert} 到目标方言后
+     * 在目标库的结果集比对。数据是同一批导入的，两边应当一致。
+     *
+     * <p>比回写对照噪音大得多，代表题 9 条实测 7 条对不上，逐条查过都不是 jkit 的问题：</p>
+     * <ul>
+     * <li>Oracle / PG 递归 CTE 的路径拼接列（{@code CONCAT(t.path, '>')} 再拼 id）宽度由
+     * anchor 那一次迭代定死，MySQL 出 {@code 1>2}、Oracle 只出 {@code 1}——数据库语义差异；</li>
+     * <li>PG {@code round(double precision, int)} 需显式 cast，与 MySQL ROUND 精度不同；</li>
+     * <li>SQL Server 库的数据量本就与另三个库不同（001 是 6 行 vs 33 行），中文列取回是 {@code ????}；</li>
+     * <li>MySQL DATE 与 Oracle TIMESTAMP 的 toString 不同。</li>
+     * </ul>
+     * <p>所以只出报告不做门禁（与 L2 的 textMatchRate 一致），差异留档供分析。</p>
+     */
+    @Test
+    public void convertedMatchesOriginal() throws Exception {
+        Assume.assumeTrue(mysql != null && (oracle != null || sqlserver != null || postgres != null));
+        List<String> ids = selectedIds();
+        Map<String, String> mysqlSqls = loadSqls("mysql_complex_300.sql");
+        StringBuilder summary = new StringBuilder();
+        int fail = 0;
+        if (oracle != null) {
+            fail += runConvertCompare(oracle, SqlDialect.ORACLE12, mysqlSqls, ids, summary);
+        }
+        if (sqlserver != null) {
+            fail += runConvertCompare(sqlserver, SqlDialect.SQLSERVER, mysqlSqls, ids, summary);
+        }
+        if (postgres != null) {
+            fail += runConvertCompare(postgres, SqlDialect.POSTGRES, mysqlSqls, ids, summary);
+        }
+        summary.append("convert compare mismatch=").append(fail)
+                .append(" (报告用，不做门禁)\n");
+        write("l4-convert-compare.txt", summary.toString());
+        System.out.print(summary);
+    }
+
+    private static int runConvertCompare(Connection c, SqlDialect target, Map<String, String> mysqlSqls,
+                                         List<String> ids, StringBuilder summary) {
+        int fail = 0;
+        int skippedNow = 0;
+        for (int i = 0; i < ids.size(); i++) {
+            String id = ids.get(i);
+            String src = mysqlSqls.get(id);
+            summary.append("CV MYSQL->").append(target).append(' ').append(id);
+            Result base = fetch(mysql, decorate(SqlDialect.MYSQL, id, src));
+            if (!base.ok) {
+                skippedNow++;
+                summary.append(" BASE_SKIP err=").append(base.error).append('\n');
+                continue;
+            }
+            String converted;
+            try {
+                converted = SQL.convert(src, SqlDialect.MYSQL, target);
+            } catch (RuntimeException e) {
+                fail++;
+                summary.append(" CONVERT_FAIL err=").append(e.getClass().getSimpleName()).append('\n');
+                continue;
+            }
+            Result after = fetch(c, decorate(target, id, converted));
+            if (!after.ok) {
+                fail++;
+                summary.append(" CONVERTED_FAIL err=").append(after.error).append('\n');
+                continue;
+            }
+            summary.append(" rows=").append(base.rows.size()).append("->").append(after.rows.size())
+                    .append(" cols=").append(base.cols).append("->").append(after.cols);
+            String diff = diffOf(base, after);
+            if (diff != null) {
+                fail++;
+                summary.append(" MISMATCH ").append(diff);
+            } else {
+                summary.append(" same");
+            }
+            summary.append('\n');
+        }
+        System.out.println("[convert-compare] " + target + " fail=" + fail + " skipped=" + skippedNow);
+        return fail;
+    }
+
+    /**
      * 回写对照：{@code parse → toSqlString} 后的 SQL 与原文在同一库、同一批数据上执行，
      * 列数、行数与规范化后的每行数据必须完全一致。
      *
@@ -312,6 +391,14 @@ public class ComplexSqlExecutionIT {
             } catch (NumberFormatException ignored) {
                 return v.toString();
             }
+        }
+        // 跨库对照：MySQL / Oracle / SQL Server / PG 的日期 toString 各不相同
+        // （毫秒位数、时区后缀），统一截到秒再比。
+        if (v instanceof java.sql.Timestamp) {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(v);
+        }
+        if (v instanceof java.sql.Date) {
+            return v.toString();
         }
         return v.toString().trim();
     }
