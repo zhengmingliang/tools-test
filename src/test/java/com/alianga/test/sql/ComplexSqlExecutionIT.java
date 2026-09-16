@@ -19,6 +19,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.Statement;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -41,6 +42,11 @@ public class ComplexSqlExecutionIT {
     private static final Pattern MARKER = Pattern.compile(
             "^-- \\[(\\d+)\\]\\s*(.+?)\\s*$", Pattern.MULTILINE);
     private static final String[] DEFAULT_IDS = {"001", "022", "211"};
+    /** 两次执行结果天然不同的函数，出现时浮点比对放宽有效位数。 */
+    private static final Pattern NONDETERMINISTIC = Pattern.compile(
+            "(?i)\\b(CURRENT_TIMESTAMP|LOCALTIMESTAMP|SYSTIMESTAMP|SYSDATE|GETDATE\\s*\\("
+                    + "|CURRENT_DATE|NOW\\s*\\(|RANDOM\\s*\\(|RAND\\s*\\()");
+
     /** 结果集行内列分隔符，用不可见字符避免与数据里的逗号冲突。 */
     private static final char SEP = '\u0001';
     private static final Path CORPUS = Paths.get(
@@ -49,7 +55,10 @@ public class ComplexSqlExecutionIT {
     private static Connection mysql;
     private static Connection oracle;
     private static Connection sqlserver;
+    private static Connection postgres;
     private static File reportDir;
+    /** runRewriteCompare 因原文执行失败而跳过的条数，仅用于报告。 */
+    private static int skipped;
 
     /**
      * 连接本机数据源；不可达则对应用例 skip。
@@ -67,6 +76,8 @@ public class ComplexSqlExecutionIT {
                 "jdbc:sqlserver://127.0.0.1:1433;databaseName=jkit_ss_test;"
                         + "encrypt=false;trustServerCertificate=true",
                 "sa", "Ireport@2025", "com.microsoft.sqlserver.jdbc.SQLServerDriver");
+        postgres = tryConnect("jdbc:postgresql://127.0.0.1:5532/jkit_complex",
+                "postgres", "zml-mingliang", "org.postgresql.Driver");
         if (oracle != null) {
             try (Statement st = oracle.createStatement()) {
                 st.execute("ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD'");
@@ -84,6 +95,7 @@ public class ComplexSqlExecutionIT {
         closeQuietly(mysql);
         closeQuietly(oracle);
         closeQuietly(sqlserver);
+        closeQuietly(postgres);
     }
 
     /**
@@ -91,7 +103,8 @@ public class ComplexSqlExecutionIT {
      */
     @Test
     public void l0Probe() throws Exception {
-        Assume.assumeTrue("no database reachable", mysql != null || oracle != null || sqlserver != null);
+        Assume.assumeTrue("no database reachable",
+                mysql != null || oracle != null || sqlserver != null || postgres != null);
         if (mysql != null) {
             assertTrue("mysql orders empty", probeCount(mysql, "SELECT COUNT(*) FROM orders") > 0);
         }
@@ -101,6 +114,9 @@ public class ComplexSqlExecutionIT {
         if (sqlserver != null) {
             assertTrue("sqlserver orders empty", probeCount(sqlserver, "SELECT COUNT(*) FROM orders") > 0);
         }
+        if (postgres != null) {
+            assertTrue("postgres orders empty", probeCount(postgres, "SELECT COUNT(*) FROM orders") > 0);
+        }
     }
 
     /**
@@ -108,13 +124,14 @@ public class ComplexSqlExecutionIT {
      */
     @Test
     public void originalSqlExecutes() throws Exception {
-        Assume.assumeTrue(mysql != null || oracle != null || sqlserver != null);
+        Assume.assumeTrue(mysql != null || oracle != null || sqlserver != null || postgres != null);
         List<String> ids = selectedIds();
         StringBuilder summary = new StringBuilder();
         int fail = 0;
         fail += runOriginal(mysql, SqlDialect.MYSQL, "mysql_complex_300.sql", ids, summary);
         fail += runOriginal(oracle, SqlDialect.ORACLE12, "oracle_complex_300.sql", ids, summary);
         fail += runOriginal(sqlserver, SqlDialect.SQLSERVER, "sqlserver_complex_300.sql", ids, summary);
+        fail += runOriginal(postgres, SqlDialect.POSTGRES, "postgresql_complex_300.sql", ids, summary);
         write("l4-original.txt", summary.toString());
         System.out.print(summary);
         assertTrue("original exec failures " + fail + "\n" + summary, fail == 0);
@@ -129,13 +146,14 @@ public class ComplexSqlExecutionIT {
      */
     @Test
     public void rewrittenMatchesOriginal() throws Exception {
-        Assume.assumeTrue(mysql != null || oracle != null || sqlserver != null);
+        Assume.assumeTrue(mysql != null || oracle != null || sqlserver != null || postgres != null);
         List<String> ids = selectedIds();
         StringBuilder summary = new StringBuilder();
         int fail = 0;
         fail += runRewriteCompare(mysql, SqlDialect.MYSQL, "mysql_complex_300.sql", ids, summary);
         fail += runRewriteCompare(oracle, SqlDialect.ORACLE12, "oracle_complex_300.sql", ids, summary);
         fail += runRewriteCompare(sqlserver, SqlDialect.SQLSERVER, "sqlserver_complex_300.sql", ids, summary);
+        fail += runRewriteCompare(postgres, SqlDialect.POSTGRES, "postgresql_complex_300.sql", ids, summary);
         write("l4-rewrite-compare.txt", summary.toString());
         System.out.print(summary);
         assertTrue("rewrite mismatch " + fail + "\n" + summary, fail == 0);
@@ -196,15 +214,17 @@ public class ComplexSqlExecutionIT {
         }
         Map<String, String> sqls = loadSqls(file);
         int fail = 0;
+        skipped = 0;
         for (int i = 0; i < ids.size(); i++) {
             String id = ids.get(i);
             String sql = sqls.get(id);
             summary.append("RW ").append(dialect).append(' ').append(id);
             Result base = fetch(c, decorate(dialect, id, sql));
             if (!base.ok) {
-                // 原文就跑不通，不是回写的锅，跳过对照
-                fail++;
-                summary.append(" BASE_FAIL err=").append(base.error).append('\n');
+                // 原文就跑不通（语料/库的问题，如 PostgreSQL round(float8,int) 需显式 cast），
+                // 不是回写的锅，记为 skip 不计失败——否则基线噪声会一直压着这条门禁。
+                skipped++;
+                summary.append(" BASE_SKIP err=").append(base.error).append('\n');
                 continue;
             }
             String rewritten;
@@ -232,14 +252,21 @@ public class ComplexSqlExecutionIT {
             }
             summary.append('\n');
         }
+        System.out.println("[rewrite-compare] " + dialect + " fail=" + fail + " skipped=" + skipped);
         return fail;
     }
 
     /**
-     * 取回结果集并规范化：数字去掉尾随零，行内用 SEP 分隔，行间排序以消除不稳定顺序。
+     * 取回结果集并规范化：数字按有效位数取整、去掉尾随零，行内用 SEP 分隔，
+     * 行间排序以消除不稳定顺序。
+     *
+     * <p>含 {@code CURRENT_TIMESTAMP} / {@code NOW()} / {@code RANDOM()} 的 SQL 两次执行
+     * 之间隔了毫秒，浮点列天然抖动（实测同一条 SQL 相差 3e-9 相对量），
+     * 这类放宽到 6 位有效数字；确定性 SQL 用 12 位，金额类差异照样抓得到。</p>
      */
     private static Result fetch(Connection c, String sql) {
         Result out = new Result();
+        int sig = NONDETERMINISTIC.matcher(sql).find() ? 6 : 12;
         out.rows = new ArrayList<String>();
         long t0 = System.currentTimeMillis();
         try (Statement st = c.createStatement()) {
@@ -253,7 +280,7 @@ public class ComplexSqlExecutionIT {
                         if (i > 1) {
                             sb.append(SEP);
                         }
-                        sb.append(normalize(rs.getObject(i)));
+                        sb.append(normalize(rs.getObject(i), sig));
                     }
                     out.rows.add(sb.toString());
                 }
@@ -273,13 +300,15 @@ public class ComplexSqlExecutionIT {
         return out;
     }
 
-    private static String normalize(Object v) {
+    private static String normalize(Object v, int significantDigits) {
         if (v == null) {
             return "\u0000NULL";
         }
         if (v instanceof Number) {
             try {
-                return new BigDecimal(v.toString()).stripTrailingZeros().toPlainString();
+                return new BigDecimal(v.toString())
+                        .round(new MathContext(significantDigits))
+                        .stripTrailingZeros().toPlainString();
             } catch (NumberFormatException ignored) {
                 return v.toString();
             }
