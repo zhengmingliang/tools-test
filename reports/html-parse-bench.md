@@ -9,52 +9,53 @@ os=Linux amd64 java=11.0.32.1 maxHeap=2048 MB
 
 ```
 scenario                   jkit(ms)  jsoup(ms)    jkit快
-小页面 2 条 (1.6 KB)              0.012      0.023    1.92x
-中页面 60 条 (30 KB)              0.134      0.275    2.06x
-大页面 600 条 (300 KB)            1.307      2.638    2.02x
+小页面 2 条 (1.6 KB)              0.011      0.021    1.94x
+中页面 60 条 (30 KB)              0.128      0.261    2.03x
+大页面 600 条 (300 KB)            1.204      2.539    2.11x
 ```
 
 ## 解析 + text()
 
 ```
 scenario                   jkit(ms)  jsoup(ms)    jkit快
-小页面 2 条 (1.6 KB)              0.012      0.023    2.00x
-中页面 60 条 (30 KB)              0.170      0.297    1.75x
-大页面 600 条 (300 KB)            1.711      2.865    1.67x
+小页面 2 条 (1.6 KB)              0.011      0.022    2.01x
+中页面 60 条 (30 KB)              0.160      0.278    1.73x
+大页面 600 条 (300 KB)            1.638      2.750    1.68x
 ```
 
 ## 选择器（中页面 60 条，预解析后重复查询）
 
 ```
 selector                   jkit(ms)  jsoup(ms)    jkit快
-#main                         0.007      0.012    1.62x
-.post                         0.009      0.014    1.55x
-article.post h2               0.009      0.019    2.04x
-main > article                0.007      0.013    1.76x
-a[href^=/p/]                  0.009      0.016    1.82x
-li:first-child                0.009      0.015    1.60x
-h2 + p                        0.008      0.016    2.06x
-p b                           0.008      0.017    2.17x
+#main                         0.000      0.012   79.90x
+.post                         0.001      0.014   10.42x
+article.post h2               0.002      0.020    8.29x
+main > article                0.002      0.013    8.11x
+a[href^=/p/]                  0.002      0.016    9.42x
+li:first-child                0.003      0.015    4.57x
+h2 + p                        0.001      0.017   11.79x
+p b                           0.001      0.017   14.02x
 ```
 
 ## 选择器（大页面 600 条）
 
 ```
 selector                   jkit(ms)  jsoup(ms)    jkit快
-#main                         0.110      0.141    1.28x
-.post                         0.132      0.177    1.34x
-article.post h2               0.109      0.194    1.77x
-a[href^=/p/]                  0.105      0.165    1.57x
+#main                         0.000      0.146  748.82x
+.post                         0.015      0.182   12.38x
+article.post h2               0.023      0.202    8.61x
+a[href^=/p/]                  0.016      0.173   10.70x
 ```
 
 ## 常驻内存（150 份大页面 DOM）
 
 ```
-jkit=202.1 MB  jsoup=179.7 MB  jkit/jsoup=0.89x
+只解析              jkit=  202.6 MB  jsoup=  179.7 MB  jkit/jsoup=1.13x
+解析+一次查询          jkit=  209.1 MB  jsoup=  181.0 MB  jkit/jsoup=1.16x
 ```
 
 ## 端到端（大页面：解析 + 3 次查询 + 取文本）
 
 ```
-jkit=   2.341 ms  jsoup=   4.715 ms  jkit快= 2.01x
+jkit=   3.397 ms  jsoup=   6.428 ms  jkit快= 1.89x
 ```

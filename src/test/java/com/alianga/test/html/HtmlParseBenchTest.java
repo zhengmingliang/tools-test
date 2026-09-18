@@ -397,14 +397,18 @@ public class HtmlParseBenchTest {
         }
         rep.append("```\n");
 
-        long jm = retained(150, bigHtml, true);
-        long sm = retained(150, bigHtml, false);
+        long jm = retained(150, bigHtml, true, false);
+        long sm = retained(150, bigHtml, false, false);
+        long jm2 = retained(150, bigHtml, true, true);
+        long sm2 = retained(150, bigHtml, false, true);
         // 量完立刻归还，否则这几百兆垃圾会挤掉后面的端到端测量
         System.gc();
         sleep(300);
         rep.append("\n## 常驻内存（150 份大页面 DOM）\n\n```\n");
-        rep.append(String.format(Locale.ROOT, "jkit=%.1f MB  jsoup=%.1f MB  jkit/jsoup=%.2fx%n",
-                jm / 1048576.0, sm / 1048576.0, sm / (double) jm));
+        rep.append(String.format(Locale.ROOT, "%-16s jkit=%7.1f MB  jsoup=%7.1f MB  jkit/jsoup=%.2fx%n",
+                "只解析", jm / 1048576.0, sm / 1048576.0, jm / (double) sm));
+        rep.append(String.format(Locale.ROOT, "%-16s jkit=%7.1f MB  jsoup=%7.1f MB  jkit/jsoup=%.2fx%n",
+                "解析+一次查询", jm2 / 1048576.0, sm2 / 1048576.0, jm2 / (double) sm2));
         rep.append("```\n");
 
         final String[] q3 = {".post", "article h2", "a[href^=/p/]"};
@@ -454,12 +458,20 @@ public class HtmlParseBenchTest {
         Assert.assertTrue("大页面解析出现数量级退化", parseRatio > 0.5);
     }
 
-    private static long retained(int n, final String html, final boolean useJkit) {
+    /**
+     * 量 n 份 DOM 常驻堆。
+     *
+     * @param n DOM 份数
+     * @param html 页面源码
+     * @param useJkit true 量 jkit，false 量 Jsoup
+     * @param query 是否对每份 DOM 跑一次选择器查询
+     * @return 常驻字节数
+     */
+    private static long retained(int n, final String html, final boolean useJkit, final boolean query) {
         for (int i = 0; i < 20; i++) {
-            if (useJkit) {
-                Html.parse(html);
-            } else {
-                Jsoup.parse(html);
+            Object warm = useJkit ? Html.parse(html) : Jsoup.parse(html);
+            if (query) {
+                queryOnce(warm, useJkit);
             }
         }
         System.gc();
@@ -467,7 +479,11 @@ public class HtmlParseBenchTest {
         long before = used();
         List<Object> keep = new ArrayList<Object>(n);
         for (int i = 0; i < n; i++) {
-            keep.add(useJkit ? Html.parse(html) : Jsoup.parse(html));
+            Object d = useJkit ? Html.parse(html) : Jsoup.parse(html);
+            if (query) {
+                queryOnce(d, useJkit);
+            }
+            keep.add(d);
         }
         System.gc();
         sleep(200);
@@ -476,6 +492,21 @@ public class HtmlParseBenchTest {
         System.gc();
         sleep(200);
         return after - before;
+    }
+
+    /** 跑一次典型查询，用来触发两侧的惰性结构（jkit 建索引、Jsoup 缓存 class 名）。 */
+    private static void queryOnce(Object doc, boolean useJkit) {
+        if (useJkit) {
+            Document d = (Document) doc;
+            d.select(".post");
+            d.select("article.post h2");
+            d.selectFirst("#main");
+        } else {
+            org.jsoup.nodes.Document d = (org.jsoup.nodes.Document) doc;
+            d.select(".post");
+            d.select("article.post h2");
+            d.selectFirst("#main");
+        }
     }
 
     private static long used() {
