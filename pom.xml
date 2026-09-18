@@ -81,6 +81,14 @@
       <version>4.13.2</version>
       <scope>test</scope>
     </dependency>
+
+    <!-- HTML 基准对照：仅 tools-test 使用，jkit 本体保持零依赖 -->
+    <dependency>
+      <groupId>org.jsoup</groupId>
+      <artifactId>jsoup</artifactId>
+      <version>1.18.1</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>postgresql</artifactId>
@@ -209,6 +217,10 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
+        <configuration>
+          <!-- HTML 压测会在堆里常驻上百份 DOM，堆太小会 OOM，这里固定上下限保证可比 -->
+          <argLine>-Xms1g -Xmx2g</argLine>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
